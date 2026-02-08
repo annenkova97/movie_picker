@@ -1,37 +1,69 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Movie Picker — Выбор фильмов</title>
-    <link rel="stylesheet" href="/static/styles.css">
+
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS + daisyUI CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.14/dist/full.min.css" rel="stylesheet" type="text/css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+
+    <!-- Vue.js -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+    </style>
 </head>
-<body>
-    <div id="app">
-        <header class="header">
-            <h1>Movie Picker</h1>
-            <nav class="tabs">
+<body class="bg-base-300 min-h-screen">
+    <div id="app" class="container mx-auto px-4 py-6">
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold tracking-tight text-primary mb-6">Movie Picker</h1>
+            <nav class="flex justify-center gap-2 flex-wrap">
                 <button
-                    :class="{ active: activeTab === 'list' }"
+                    class="btn"
+                    :class="activeTab === 'list' ? 'btn-primary' : 'btn-ghost'"
                     @click="activeTab = 'list'"
                 >
                     Мой список
                 </button>
                 <button
-                    :class="{ active: activeTab === 'search' }"
+                    class="btn"
+                    :class="activeTab === 'search' ? 'btn-primary' : 'btn-ghost'"
                     @click="activeTab = 'search'"
                 >
                     Поиск
                 </button>
                 <button
-                    :class="{ active: activeTab === 'recommend' }"
+                    class="btn"
+                    :class="activeTab === 'recommend' ? 'btn-primary' : 'btn-ghost'"
                     @click="activeTab = 'recommend'"
                 >
                     Рекомендации
                 </button>
                 <button
-                    :class="{ active: activeTab === 'top100' }"
+                    class="btn"
+                    :class="activeTab === 'top100' ? 'btn-primary' : 'btn-ghost'"
                     @click="activeTab = 'top100'; loadTop100()"
                 >
                     Топ-100
@@ -39,70 +71,78 @@
             </nav>
         </header>
 
-        <main class="main">
+        <main>
             <!-- Мой список -->
-            <section v-if="activeTab === 'list'" class="section">
-                <div class="filters">
+            <section v-if="activeTab === 'list'">
+                <div class="flex justify-center gap-2 mb-6 flex-wrap">
                     <button
-                        :class="{ active: listFilter === 'all' }"
+                        class="btn btn-sm"
+                        :class="listFilter === 'all' ? 'btn-outline btn-primary' : 'btn-ghost'"
                         @click="listFilter = 'all'"
                     >Все</button>
                     <button
-                        :class="{ active: listFilter === 'unwatched' }"
+                        class="btn btn-sm"
+                        :class="listFilter === 'unwatched' ? 'btn-outline btn-primary' : 'btn-ghost'"
                         @click="listFilter = 'unwatched'"
                     >К просмотру</button>
                     <button
-                        :class="{ active: listFilter === 'watched' }"
+                        class="btn btn-sm"
+                        :class="listFilter === 'watched' ? 'btn-outline btn-primary' : 'btn-ghost'"
                         @click="listFilter = 'watched'"
                     >Просмотрено</button>
                 </div>
 
-                <div v-if="loading" class="loading">Загрузка...</div>
-
-                <div v-else-if="filteredMovies.length === 0" class="empty">
-                    <p>Список пуст</p>
-                    <p>Перейдите в раздел «Поиск», чтобы добавить фильмы</p>
+                <div v-if="loading" class="text-center py-10">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                    <p class="mt-4 text-base-content/60">Загрузка...</p>
                 </div>
 
-                <div v-else class="movies-grid">
+                <div v-else-if="filteredMovies.length === 0" class="text-center py-16">
+                    <h3 class="text-xl font-bold tracking-tight mb-2">Список пуст</h3>
+                    <p class="text-base-content/60">Перейдите в раздел «Поиск», чтобы добавить фильмы</p>
+                </div>
+
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     <div
                         v-for="movie in filteredMovies"
                         :key="movie.id"
-                        class="movie-card"
-                        :class="{ watched: movie.is_watched }"
+                        class="card bg-base-100 shadow-xl hover:shadow-2xl transition-all hover:-translate-y-1"
+                        :class="{ 'opacity-60': movie.is_watched }"
                     >
-                        <img
-                            v-if="movie.poster_url"
-                            :src="movie.poster_url"
-                            :alt="movie.title"
-                            class="poster"
-                        >
-                        <div v-else class="poster placeholder">Нет постера</div>
-
-                        <div class="movie-info">
-                            <h3>{{ movie.title }}</h3>
-                            <p class="year">{{ movie.year }}</p>
-                            <p class="genres">{{ movie.genres.join(', ') }}</p>
-                            <p v-if="movie.description" class="description">
+                        <figure>
+                            <img
+                                v-if="movie.poster_url"
+                                :src="movie.poster_url"
+                                :alt="movie.title"
+                                class="w-full h-80 object-cover"
+                            >
+                            <div v-else class="w-full h-80 bg-base-300 flex items-center justify-center text-base-content/40">
+                                Нет постера
+                            </div>
+                        </figure>
+                        <div class="card-body">
+                            <h2 class="card-title font-bold tracking-tight">{{ movie.title }}</h2>
+                            <p class="text-base-content/60 text-sm">{{ movie.year }}</p>
+                            <p class="text-primary text-sm">{{ movie.genres.join(', ') }}</p>
+                            <p v-if="movie.description" class="text-sm text-base-content/80 line-clamp-3">
                                 {{ movie.description }}
                             </p>
-                            <p v-if="movie.cast.length" class="cast">
+                            <p v-if="movie.cast.length" class="text-sm text-base-content/60">
                                 {{ movie.cast.slice(0, 3).join(', ') }}
                             </p>
-                            <p v-if="movie.imdb_rating" class="rating">
+                            <p v-if="movie.imdb_rating" class="text-warning font-bold">
                                 IMDb: {{ movie.imdb_rating }}
                             </p>
-
-                            <div class="actions">
+                            <div class="card-actions justify-end mt-4">
                                 <button
                                     @click="toggleWatched(movie)"
-                                    class="btn-watch"
+                                    class="btn btn-sm btn-secondary"
                                 >
                                     {{ movie.is_watched ? 'Не смотрел' : 'Просмотрено' }}
                                 </button>
                                 <button
                                     @click="deleteMovie(movie.id)"
-                                    class="btn-delete"
+                                    class="btn btn-sm btn-error"
                                 >
                                     Удалить
                                 </button>
@@ -113,89 +153,103 @@
             </section>
 
             <!-- Поиск -->
-            <section v-if="activeTab === 'search'" class="section">
-                <div class="search-box">
-                    <input
-                        v-model="searchQuery"
-                        @keyup.enter="searchMovies"
-                        placeholder="Введите название фильма..."
-                        class="search-input"
-                    >
-                    <button @click="searchMovies" class="btn-search">Найти</button>
+            <section v-if="activeTab === 'search'">
+                <div class="max-w-xl mx-auto mb-8">
+                    <div class="join w-full">
+                        <input
+                            v-model="searchQuery"
+                            @keyup.enter="searchMovies"
+                            placeholder="Введите название фильма..."
+                            class="input input-bordered join-item flex-1"
+                        >
+                        <button @click="searchMovies" class="btn btn-primary join-item">Найти</button>
+                    </div>
                 </div>
 
-                <div v-if="searchLoading" class="loading">Поиск...</div>
+                <div v-if="searchLoading" class="text-center py-10">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                    <p class="mt-4 text-base-content/60">Поиск...</p>
+                </div>
 
-                <div v-else-if="searchResults.length" class="search-results">
+                <div v-else-if="searchResults.length" class="max-w-xl mx-auto space-y-4">
                     <div
                         v-for="result in searchResults"
                         :key="result.imdb_id"
-                        class="search-result"
+                        class="card card-side bg-base-100 shadow-md"
                     >
-                        <img
-                            v-if="result.poster_url"
-                            :src="result.poster_url"
-                            :alt="result.title"
-                            class="poster-small"
-                        >
-                        <div v-else class="poster-small placeholder">?</div>
-
-                        <div class="result-info">
-                            <h4>{{ result.title }} ({{ result.year }})</h4>
-                            <small>{{ result.imdb_id }}</small>
+                        <figure class="w-20 flex-shrink-0">
+                            <img
+                                v-if="result.poster_url"
+                                :src="result.poster_url"
+                                :alt="result.title"
+                                class="w-full h-28 object-cover"
+                            >
+                            <div v-else class="w-full h-28 bg-base-300 flex items-center justify-center text-base-content/40">
+                                ?
+                            </div>
+                        </figure>
+                        <div class="card-body py-3 px-4">
+                            <h3 class="card-title text-base font-bold tracking-tight">{{ result.title }} ({{ result.year }})</h3>
+                            <p class="text-xs text-base-content/50">{{ result.imdb_id }}</p>
+                            <div class="card-actions justify-end">
+                                <button
+                                    @click="addMovie(result.imdb_id)"
+                                    :disabled="addingMovie === result.imdb_id"
+                                    class="btn btn-sm btn-success"
+                                >
+                                    {{ addingMovie === result.imdb_id ? 'Добавление...' : 'Добавить' }}
+                                </button>
+                            </div>
                         </div>
-
-                        <button
-                            @click="addMovie(result.imdb_id)"
-                            :disabled="addingMovie === result.imdb_id"
-                            class="btn-add"
-                        >
-                            {{ addingMovie === result.imdb_id ? 'Добавление...' : 'Добавить' }}
-                        </button>
                     </div>
                 </div>
             </section>
 
             <!-- Рекомендации -->
-            <section v-if="activeTab === 'recommend'" class="section">
-                <div class="recommend-box">
+            <section v-if="activeTab === 'recommend'">
+                <div class="max-w-xl mx-auto mb-8">
                     <textarea
                         v-model="recommendQuery"
                         @keyup.ctrl.enter="getRecommendations"
                         placeholder="Опишите, что хотите посмотреть...&#10;Например: «что-то лёгкое», «драму про семью», «фильм с Ди Каприо»"
-                        class="recommend-input"
+                        class="textarea textarea-bordered w-full h-32 mb-4"
                     ></textarea>
-                    <button @click="getRecommendations" class="btn-recommend">
+                    <button @click="getRecommendations" class="btn btn-primary btn-block">
                         Подобрать фильм
                     </button>
                 </div>
 
-                <div v-if="recommendLoading" class="loading">
-                    AI подбирает фильмы...
+                <div v-if="recommendLoading" class="text-center py-10">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                    <p class="mt-4 text-base-content/60">AI подбирает фильмы...</p>
                 </div>
 
-                <div v-else-if="recommendation" class="recommendation">
-                    <div class="explanation">
-                        <p>{{ recommendation.explanation }}</p>
+                <div v-else-if="recommendation">
+                    <div class="card bg-base-100 shadow-md mb-8 max-w-2xl mx-auto border-l-4 border-primary">
+                        <div class="card-body">
+                            <p class="text-lg">{{ recommendation.explanation }}</p>
+                        </div>
                     </div>
 
-                    <div class="movies-grid">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         <div
                             v-for="movie in recommendation.movies"
                             :key="movie.id"
-                            class="movie-card recommended"
+                            class="card bg-base-100 shadow-xl ring-2 ring-primary"
                         >
-                            <img
-                                v-if="movie.poster_url"
-                                :src="movie.poster_url"
-                                :alt="movie.title"
-                                class="poster"
-                            >
-                            <div class="movie-info">
-                                <h3>{{ movie.title }}</h3>
-                                <p class="year">{{ movie.year }}</p>
-                                <p class="genres">{{ movie.genres.join(', ') }}</p>
-                                <p v-if="movie.description" class="description">
+                            <figure>
+                                <img
+                                    v-if="movie.poster_url"
+                                    :src="movie.poster_url"
+                                    :alt="movie.title"
+                                    class="w-full h-80 object-cover"
+                                >
+                            </figure>
+                            <div class="card-body">
+                                <h2 class="card-title font-bold tracking-tight">{{ movie.title }}</h2>
+                                <p class="text-base-content/60 text-sm">{{ movie.year }}</p>
+                                <p class="text-primary text-sm">{{ movie.genres.join(', ') }}</p>
+                                <p v-if="movie.description" class="text-sm text-base-content/80 line-clamp-3">
                                     {{ movie.description }}
                                 </p>
                             </div>
@@ -205,44 +259,51 @@
             </section>
 
             <!-- Топ-100 -->
-            <section v-if="activeTab === 'top100'" class="section">
-                <p class="section-description">
+            <section v-if="activeTab === 'top100'">
+                <p class="text-center text-base-content/60 mb-6">
                     Топ-100 лучших фильмов по версии IMDb и фильмы-призёры крупных кинопремий
                 </p>
 
-                <div v-if="top100Loading" class="loading">Загрузка топ-100...</div>
+                <div v-if="top100Loading" class="text-center py-10">
+                    <span class="loading loading-spinner loading-lg text-primary"></span>
+                    <p class="mt-4 text-base-content/60">Загрузка топ-100...</p>
+                </div>
 
-                <div v-else class="movies-grid">
+                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     <div
                         v-for="movie in top100Movies"
                         :key="movie.imdb_id"
-                        class="movie-card top100"
+                        class="card bg-base-100 shadow-xl ring-1 ring-warning hover:shadow-2xl transition-all hover:-translate-y-1"
                     >
-                        <img
-                            v-if="movie.poster_url"
-                            :src="movie.poster_url"
-                            :alt="movie.title"
-                            class="poster"
-                        >
-                        <div v-else class="poster placeholder">Нет постера</div>
-
-                        <div class="movie-info">
-                            <h3>{{ movie.title }}</h3>
-                            <p class="year">{{ movie.year }}</p>
-                            <p v-if="movie.genres" class="genres">
+                        <figure>
+                            <img
+                                v-if="movie.poster_url"
+                                :src="movie.poster_url"
+                                :alt="movie.title"
+                                class="w-full h-80 object-cover"
+                            >
+                            <div v-else class="w-full h-80 bg-base-300 flex items-center justify-center text-base-content/40">
+                                Нет постера
+                            </div>
+                        </figure>
+                        <div class="card-body">
+                            <h2 class="card-title font-bold tracking-tight">{{ movie.title }}</h2>
+                            <p class="text-base-content/60 text-sm">{{ movie.year }}</p>
+                            <p v-if="movie.genres" class="text-primary text-sm">
                                 {{ movie.genres.join ? movie.genres.join(', ') : movie.genres }}
                             </p>
-                            <p v-if="movie.imdb_rating" class="rating">
+                            <p v-if="movie.imdb_rating" class="text-warning font-bold">
                                 IMDb: {{ movie.imdb_rating }}
                             </p>
-
-                            <button
-                                @click="addFromTop100(movie.imdb_id)"
-                                :disabled="addingMovie === movie.imdb_id || movie.added"
-                                class="btn-add"
-                            >
-                                {{ movie.added ? 'Добавлено' : 'В мой список' }}
-                            </button>
+                            <div class="card-actions justify-end mt-4">
+                                <button
+                                    @click="addFromTop100(movie.imdb_id)"
+                                    :disabled="addingMovie === movie.imdb_id || movie.added"
+                                    class="btn btn-sm btn-primary"
+                                >
+                                    {{ movie.added ? 'Добавлено' : 'В мой список' }}
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -250,8 +311,10 @@
         </main>
 
         <!-- Уведомления -->
-        <div v-if="notification" class="notification" :class="notification.type">
-            {{ notification.message }}
+        <div v-if="notification" class="toast toast-end">
+            <div class="alert" :class="notification.type === 'success' ? 'alert-success' : 'alert-error'">
+                <span>{{ notification.message }}</span>
+            </div>
         </div>
     </div>
 
