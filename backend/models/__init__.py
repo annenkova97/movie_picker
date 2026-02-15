@@ -7,6 +7,7 @@ from backend.models.movie import (
     RecommendationResponse,
     OMDBSearchResult
 )
+from backend.models.instagram import InstagramImportRequest
 
 __all__ = [
     "Movie",
@@ -15,5 +16,6 @@ __all__ = [
     "MovieUpdate",
     "RecommendationRequest",
     "RecommendationResponse",
-    "OMDBSearchResult"
+    "OMDBSearchResult",
+    "InstagramImportRequest"
 ]

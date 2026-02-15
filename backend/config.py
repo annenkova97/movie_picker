@@ -9,7 +9,19 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 DATABASE_PATH = os.path.join(os.path.dirname(__file__), "data", "movies.db")
 OMDB_BASE_URL = "http://www.omdbapi.com/"
 
-# Instagram
-INSTAGRAM_COOKIES_FILE = os.getenv("INSTAGRAM_COOKIES_FILE", "")
-INSTAGRAM_VIDEOS_DIR = os.path.join(os.path.dirname(__file__), "data", "videos")
-INSTAGRAM_TEMP_DIR = os.path.join(os.path.dirname(__file__), "data", "tmp")
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+INSTAGRAM_COOKIES_PATH = os.getenv(
+    "INSTAGRAM_COOKIES_PATH",
+    os.path.join(DATA_DIR, "instagram_cookies.txt")
+)
+INSTAGRAM_VIDEO_DIR = os.getenv(
+    "INSTAGRAM_VIDEO_DIR",
+    os.path.join(DATA_DIR, "instagram_videos")
+)
+INSTAGRAM_TEMP_DIR = os.getenv(
+    "INSTAGRAM_TEMP_DIR",
+    os.path.join(DATA_DIR, "instagram_tmp")
+)
+
+os.makedirs(INSTAGRAM_VIDEO_DIR, exist_ok=True)
+os.makedirs(INSTAGRAM_TEMP_DIR, exist_ok=True)

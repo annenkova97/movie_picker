@@ -11,17 +11,17 @@ class OMDBService:
         self.api_key = OMDB_API_KEY
         self.base_url = OMDB_BASE_URL
 
-    async def search_movies(self, query: str) -> list[OMDBSearchResult]:
+    async def search_movies(self, query: str, media_type: str = "movie") -> list[OMDBSearchResult]:
         """Поиск фильмов по названию"""
+        params: dict = {
+            "apikey": self.api_key,
+            "s": query,
+        }
+        if media_type:
+            params["type"] = media_type
+
         async with httpx.AsyncClient() as client:
-            response = await client.get(
-                self.base_url,
-                params={
-                    "apikey": self.api_key,
-                    "s": query,
-                    "type": "movie"
-                }
-            )
+            response = await client.get(self.base_url, params=params)
             data = response.json()
 
             if data.get("Response") == "False":

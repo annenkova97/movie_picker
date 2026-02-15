@@ -159,7 +159,7 @@
                         <input
                             v-model="searchQuery"
                             @keyup.enter="searchMovies"
-                            placeholder="Введите название фильма..."
+                            placeholder="Название фильма или ссылка на Instagram Reel..."
                             class="input input-bordered join-item flex-1"
                         >
                         <button @click="searchMovies" class="btn btn-primary join-item">Найти</button>
@@ -168,7 +168,7 @@
 
                 <div v-if="searchLoading" class="text-center py-10">
                     <span class="loading loading-spinner loading-lg text-primary"></span>
-                    <p class="mt-4 text-base-content/60">Поиск...</p>
+                    <p class="mt-4 text-base-content/60">{{ searchQuery.includes('instagram.com') ? 'Импорт из Instagram Reel...' : 'Поиск...' }}</p>
                 </div>
 
                 <div v-else-if="searchResults.length" class="max-w-xl mx-auto space-y-4">
@@ -318,6 +318,6 @@
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=2"></script>
 </body>
 </html>

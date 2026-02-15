@@ -112,8 +112,17 @@ createApp({
             }
         };
 
+        const isInstagramUrl = (text) => {
+            return /https?:\/\/(www\.)?instagram\.com\/(reel|reels|p)\/[\w-]+/i.test(text.trim());
+        };
+
         const searchMovies = async () => {
             if (!searchQuery.value.trim()) return;
+
+            if (isInstagramUrl(searchQuery.value)) {
+                await importFromInstagram();
+                return;
+            }
 
             searchLoading.value = true;
             searchResults.value = [];
@@ -128,6 +137,34 @@ createApp({
             } catch (error) {
                 console.error('Search error:', error);
                 showNotification('Ошибка поиска', 'error');
+            } finally {
+                searchLoading.value = false;
+            }
+        };
+
+        const importFromInstagram = async () => {
+            searchLoading.value = true;
+            searchResults.value = [];
+            try {
+                const response = await fetch('/api/instagram/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: searchQuery.value.trim(), vision: false })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    searchResults.value = data;
+                    if (data.length === 0) {
+                        showNotification('В этом Reel фильмы не найдены', 'error');
+                    }
+                } else {
+                    const err = await response.json();
+                    showNotification(err.detail || 'Ошибка импорта из Instagram', 'error');
+                }
+            } catch (error) {
+                console.error('Instagram import error:', error);
+                showNotification('Ошибка импорта из Instagram', 'error');
             } finally {
                 searchLoading.value = false;
             }
