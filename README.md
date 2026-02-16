@@ -16,6 +16,8 @@
 - Python 3.11+
 - OMDB API Key (бесплатно)
 - Anthropic API Key (Claude)
+- OpenAI API Key (для импорта Instagram)
+- ffmpeg (для извлечения аудио/кадров)
 
 ## Установка
 
@@ -46,6 +48,9 @@ cp .env.example .env
 ```
 OMDB_API_KEY=ваш_ключ_omdb
 ANTHROPIC_API_KEY=ваш_ключ_anthropic
+OPENAI_API_KEY=ваш_ключ_openai
+INSTAGRAM_COOKIES_PATH=backend/data/instagram_cookies.txt
+INSTAGRAM_VIDEO_DIR=backend/data/instagram_videos
 ```
 
 ## Получение API ключей
@@ -58,6 +63,38 @@ ANTHROPIC_API_KEY=ваш_ключ_anthropic
 ### Anthropic API Key
 1. Перейдите на https://console.anthropic.com/
 2. Зарегистрируйтесь и создайте API ключ
+
+### OpenAI API Key
+1. Перейдите на https://platform.openai.com/
+2. Создайте API ключ
+
+## Instagram импорт (Reels)
+
+Импортирует фильмы из Instagram Reel по ссылке, сохраняет их в базу и **не удаляет** скачанные видео.
+
+### Как получить cookies.txt
+Instagram требует авторизацию через cookie-файл.
+
+1. В Chrome установите расширение **Get cookies.txt**.
+2. Откройте `https://www.instagram.com/` и войдите в свой аккаунт.
+3. Нажмите на иконку расширения и скачайте файл `cookies.txt`.
+4. Положите файл сюда: `backend/data/instagram_cookies.txt`
+
+При необходимости можно указать путь в `.env` через `INSTAGRAM_COOKIES_PATH`.
+
+### Куда сохраняются видео
+По умолчанию: `backend/data/instagram_videos` (можно изменить через `INSTAGRAM_VIDEO_DIR`).
+
+### API
+POST `/api/instagram/import`
+
+Пример тела запроса:
+```json
+{
+  "url": "https://www.instagram.com/reel/ABC123/",
+  "vision": false
+}
+```
 
 ## Запуск
 
@@ -131,3 +168,4 @@ movie-picker/
 | DELETE | /api/movies/{id} | Удалить фильм |
 | GET | /api/search?q=... | Поиск в OMDB |
 | POST | /api/recommend | Получить рекомендации |
+| POST | /api/instagram/import | Импорт фильмов из Instagram Reel |

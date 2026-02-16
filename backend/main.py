@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 import os
 
 from backend import database as db
-from backend.routers import movies, search, recommend
+from backend.routers import movies, search, recommend, instagram
 
 
 @asynccontextmanager
@@ -46,6 +46,7 @@ app.add_middleware(
 app.include_router(movies.router)
 app.include_router(search.router)
 app.include_router(recommend.router)
+app.include_router(instagram.router)
 
 # Статические файлы frontend
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
@@ -58,7 +59,10 @@ async def root():
     """Главная страница — отдаём frontend"""
     index_path = os.path.join(frontend_path, "index.html")
     if os.path.exists(index_path):
-        return FileResponse(index_path)
+        return FileResponse(
+            index_path,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
     return {"message": "Movie Picker API", "docs": "/docs"}
 
 
