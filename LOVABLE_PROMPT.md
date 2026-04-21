@@ -1,7 +1,7 @@
 # Промпт для Lovable
 
 > Скопируй всё ниже и вставь первым сообщением в новом Lovable-проекте.
-> Перед отправкой замени `https://YOUR-API-URL` на реальный URL твоего Railway-деплоя.
+> Перед отправкой замени `https://moviepicker-production-69ac.up.railway.app` на реальный URL твоего Railway-деплоя.
 
 ---
 
@@ -11,8 +11,8 @@ Build a modern, polished web frontend for **Movie Picker** — a personal movie 
 
 The backend is **already built** (FastAPI). Do NOT reimplement business logic. The frontend only calls existing REST endpoints.
 
-**API base URL:** `https://YOUR-API-URL`
-**Swagger docs:** `https://YOUR-API-URL/docs`
+**API base URL:** `https://moviepicker-production-69ac.up.railway.app`
+**Swagger docs:** `https://moviepicker-production-69ac.up.railway.app/docs`
 
 ## Tech stack
 
@@ -47,7 +47,7 @@ All endpoints are under the base URL above. CORS is already open.
 ### Health
 - `GET /api/health` — `{ status: "ok" }`
 
-The full OpenAPI spec is at `https://YOUR-API-URL/openapi.json` — fetch it to generate a typed client.
+The full OpenAPI spec is at `https://moviepicker-production-69ac.up.railway.app/openapi.json` — fetch it to generate a typed client.
 
 ## Pages to build (in this order — one per prompt iteration)
 
