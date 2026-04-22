@@ -23,6 +23,9 @@ async def _ensure_column(db: aiosqlite.Connection, column: str, decl: str) -> No
 async def init_db():
     """Инициализация базы данных"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
+        # WAL: читатели не блокируют писателей — выдерживает несколько десятков
+        # одновременных юзеров без "database is locked".
+        await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("""
             CREATE TABLE IF NOT EXISTS movies (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
