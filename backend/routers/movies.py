@@ -10,10 +10,11 @@ router = APIRouter(prefix="/api/movies", tags=["movies"])
 @router.get("", response_model=list[Movie])
 async def get_movies(
     source: Optional[str] = Query(None, description="Фильтр по источнику: personal, top100, awards"),
-    is_watched: Optional[bool] = Query(None, description="Фильтр по статусу просмотра")
+    is_watched: Optional[bool] = Query(None, description="Фильтр по статусу просмотра"),
+    in_library: Optional[bool] = Query(None, description="Только фильмы, сохранённые в библиотеке пользователя"),
 ):
-    """Получить список всех фильмов"""
-    return await db.get_all_movies(source=source, is_watched=is_watched)
+    """Получить список фильмов с опциональной фильтрацией"""
+    return await db.get_all_movies(source=source, is_watched=is_watched, in_library=in_library)
 
 
 @router.get("/{movie_id}", response_model=Movie)
@@ -68,7 +69,12 @@ async def add_movie(movie_data: MovieCreate):
             print(f"Ошибка генерации описания: {e}")
 
     # Сохраняем в базу
-    return await db.add_movie(movie_base, source="personal")
+    return await db.add_movie(
+        movie_base,
+        source="personal",
+        rec_source=movie_data.rec_source,
+        rec_note=movie_data.rec_note,
+    )
 
 
 @router.post("/by-imdb/{imdb_id}", response_model=Movie)
@@ -99,15 +105,34 @@ async def add_movie_by_imdb_id(imdb_id: str, source: str = "personal"):
 
 @router.patch("/{movie_id}", response_model=Movie)
 async def update_movie(movie_id: int, update: MovieUpdate):
-    """Обновить статус фильма (отметить просмотренным)"""
+    """Обновить поля фильма (статус просмотра, источник рекомендации и заметку)"""
     movie = await db.get_movie_by_id(movie_id)
     if not movie:
         raise HTTPException(status_code=404, detail="Фильм не найден")
 
-    if update.is_watched is not None:
-        return await db.update_movie(movie_id, update.is_watched)
+    if update.is_watched is None and update.rec_source is None and update.rec_note is None:
+        return movie
 
-    return movie
+    return await db.update_movie(
+        movie_id,
+        is_watched=update.is_watched,
+        rec_source=update.rec_source,
+        rec_note=update.rec_note,
+    )
+
+
+@router.post("/{movie_id}/save", response_model=Movie)
+async def save_to_library(movie_id: int, is_watched: bool = False):
+    """Положить фильм из каталога (например, awards) на полку пользователя.
+
+    `is_watched=True` → сразу в «Уже смотрел», иначе в «Хочу посмотреть».
+    """
+    movie = await db.get_movie_by_id(movie_id)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Фильм не найден")
+
+    updated = await db.update_movie(movie_id, is_watched=is_watched, in_library=True)
+    return updated
 
 
 @router.delete("/{movie_id}")

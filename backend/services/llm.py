@@ -8,8 +8,29 @@ class LLMService:
     """Сервис для работы с Claude API"""
 
     def __init__(self):
-        self.client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        self.model = "claude-sonnet-4-20250514"
+        self.client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
+        self.model = "claude-sonnet-4-6"
+
+    async def translate_plot(self, plot: str, title: str) -> str:
+        """Перевод сюжета на русский с сохранением фактов и тона."""
+        if not plot:
+            return ""
+
+        prompt = f"""Переведи на русский язык описание сюжета фильма "{title}".
+Сохрани факты (имена, места, сюжетные повороты), не добавляй ничего от себя,
+не раскрывай спойлеров сверх того, что есть в оригинале. Не используй кавычки-ёлочки.
+
+Оригинал:
+{plot}
+
+Ответь только переводом, без вступлений и пояснений."""
+
+        message = await self.client.messages.create(
+            model=self.model,
+            max_tokens=600,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip()
 
     async def generate_short_description(self, plot: str, title: str) -> str:
         """Генерация краткого описания фильма на русском"""
@@ -24,7 +45,7 @@ class LLMService:
 
 Ответь только описанием, без вступлений и пояснений."""
 
-        message = self.client.messages.create(
+        message = await self.client.messages.create(
             model=self.model,
             max_tokens=300,
             messages=[{"role": "user", "content": prompt}]
@@ -77,7 +98,7 @@ class LLMService:
 РЕКОМЕНДАЦИИ: []
 ОБЪЯСНЕНИЕ: Причина, почему ничего не подходит."""
 
-        message = self.client.messages.create(
+        message = await self.client.messages.create(
             model=self.model,
             max_tokens=500,
             messages=[{"role": "user", "content": prompt}]

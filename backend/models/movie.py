@@ -12,6 +12,7 @@ class MovieBase(BaseModel):
     genres: list[str] = []
     description: Optional[str] = None  # Краткое описание от LLM
     plot: Optional[str] = None  # Полный сюжет из OMDB
+    plot_ru: Optional[str] = None  # Перевод plot на русский (кэш)
     cast: list[str] = []
     director: Optional[str] = None
     poster_url: Optional[str] = None
@@ -24,17 +25,26 @@ class Movie(MovieBase):
     id: int
     is_watched: bool = False
     source: str = "personal"  # personal / top100 / awards
+    rec_source: Optional[str] = None  # telegram / instagram / friends / personal
+    rec_note: Optional[str] = None  # откуда пришла рекомендация ("канал Х", "Аня посоветовала")
+    in_library: bool = True  # True — на полке пользователя; False — только в каталоге наград
+    award: Optional[str] = None  # "Oscar Best Picture", "Palme d'Or", ...
+    award_year: Optional[int] = None  # год награды (может отличаться от year выпуска)
     added_at: datetime
 
 
 class MovieCreate(BaseModel):
     """Модель для добавления фильма по названию или IMDb ID"""
     query: str  # Название или IMDb ID (tt1234567)
+    rec_source: Optional[str] = None  # telegram / instagram / friends / personal
+    rec_note: Optional[str] = None
 
 
 class MovieUpdate(BaseModel):
     """Модель для обновления фильма"""
     is_watched: Optional[bool] = None
+    rec_source: Optional[str] = None
+    rec_note: Optional[str] = None
 
 
 class RecommendationRequest(BaseModel):
