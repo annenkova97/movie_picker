@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import base64
 import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +22,20 @@ from backend.config import (
 from backend.models.movie import MovieBase
 
 
+def _find_bin(name: str) -> str:
+    """Find binary in PATH or common Homebrew locations."""
+    path = shutil.which(name)
+    if path:
+        return path
+    for candidate in [f"/opt/homebrew/bin/{name}", f"/usr/local/bin/{name}"]:
+        if os.path.isfile(candidate):
+            return candidate
+    return name
+
+
+FFMPEG = _find_bin("ffmpeg")
+FFPROBE = _find_bin("ffprobe")
+
 REEL_URL_PATTERN = re.compile(
     r"https?://(www\.)?instagram\.com/(reel|reels)/[\w-]+/?",
 )
@@ -34,6 +51,9 @@ Each element must have exactly these fields:
 - "title_ru": movie title in Russian
 - "title_en": the official English title of the movie
 - "description": a 1-2 sentence description of what the movie is about, in Russian
+- "quote": a short compelling quote from the transcript (1-2 sentences, in Russian) \
+explaining why this movie is worth watching. If the speaker said something interesting \
+about the movie, capture that. If nothing compelling was said, use an empty string.
 
 Rules:
 - "title_en" MUST be the real official English title as listed on IMDb. \
@@ -58,6 +78,7 @@ class MovieInfo:
     title_ru: str
     title_en: str
     description: str
+    quote: str = ""
 
 
 class InstagramReaderError(Exception):
@@ -124,7 +145,7 @@ def extract_audio(video_path: str) -> str:
 
     subprocess.run(
         [
-            "ffmpeg", "-y",
+            FFMPEG, "-y",
             "-i", video_path,
             "-vn",
             "-acodec", "libmp3lame",
@@ -143,7 +164,7 @@ def extract_audio(video_path: str) -> str:
 def extract_frames(video_path: str, count: int = 3) -> list[str]:
     result = subprocess.run(
         [
-            "ffprobe",
+            FFPROBE,
             "-v", "quiet",
             "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1",
@@ -162,7 +183,7 @@ def extract_frames(video_path: str, count: int = 3) -> list[str]:
 
         subprocess.run(
             [
-                "ffmpeg", "-y",
+                FFMPEG, "-y",
                 "-ss", str(timestamp),
                 "-i", video_path,
                 "-vframes", "1",
@@ -276,6 +297,7 @@ def extract_movies(
                     title_ru=item.get("title_ru", ""),
                     title_en=item.get("title_en", ""),
                     description=item.get("description", ""),
+                    quote=item.get("quote", ""),
                 )
             )
 

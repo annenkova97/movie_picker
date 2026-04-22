@@ -13,6 +13,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/watched — показать просмотренные\n"
         "/recommend <запрос> — получить рекомендацию\n"
         "/help — справка\n\n"
+        "Также можно отправить ссылку на Instagram Reel — "
+        "я извлеку фильмы и предложу добавить их в список.\n\n"
         "Или просто напиши, что хочешь посмотреть — "
         "например «что-то лёгкое» — и я подберу фильм из твоего списка!"
     )
@@ -35,6 +37,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "  /recommend что-то лёгкое\n"
         "  /recommend драма с Ди Каприо\n"
         "  /recommend триллер, но не страшный\n\n"
+        "Instagram Reel — отправь ссылку на Reel с фильмами,\n"
+        "  и я найду их в OMDB.\n\n"
         "Также можно просто написать текст — я пойму, "
         "что ты ищешь рекомендацию."
     )

@@ -11,3 +11,17 @@ __pycache__/
 
 # OS
 .DS_Store
+
+# Secrets — Instagram login cookies must never be committed
+backend/data/instagram_cookies.txt
+
+# Downloaded media / temp
+backend/data/instagram_videos/
+backend/data/instagram_tmp/
+
+# Frontend build artifacts
+frontend-new/node_modules/
+frontend-new/dist/
+
+
+frontend-new/tsconfig.tsbuildinfo

@@ -2,13 +2,17 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
 
 OMDB_API_KEY = os.getenv("OMDB_API_KEY", "")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-DATABASE_PATH = os.path.join(os.path.dirname(__file__), "data", "movies.db")
+DATABASE_PATH = os.getenv(
+    "DATABASE_PATH",
+    os.path.join(os.path.dirname(__file__), "data", "movies.db"),
+)
+os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 OMDB_BASE_URL = "http://www.omdbapi.com/"
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")

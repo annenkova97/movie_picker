@@ -20,6 +20,7 @@ from handlers.add import add_command
 from handlers.list import list_command, watched_command
 from handlers.recommend import recommend_command, recommend_handler
 from handlers.callbacks import callback_handler
+from handlers.instagram import instagram_handler
 
 
 async def post_init(application):
@@ -48,6 +49,12 @@ def main():
     # Callback-кнопки (add, watch, unwatch, delete)
     app.add_handler(CallbackQueryHandler(callback_handler))
 
+    # Instagram Reels → извлечение фильмов
+    app.add_handler(MessageHandler(
+        filters.Regex(r"https?://(www\.)?instagram\.com/(reel|reels)/"),
+        instagram_handler,
+    ))
+
     # Свободный текст → рекомендации
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND,
@@ -55,7 +62,7 @@ def main():
     ))
 
     print("Бот запущен! Нажми Ctrl+C для остановки.")
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":

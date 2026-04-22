@@ -6,7 +6,8 @@ from fastapi.responses import FileResponse
 import os
 
 from backend import database as db
-from backend.routers import movies, search, recommend, instagram
+from backend.routers import movies, search, recommend, instagram, awards
+from backend.services.awards_seed import sync_awards_catalog
 
 
 @asynccontextmanager
@@ -19,6 +20,12 @@ async def lifespan(app: FastAPI):
     # Инициализируем базу данных
     await db.init_db()
     print("База данных инициализирована")
+
+    # Догружаем каталог наград (идемпотентно)
+    try:
+        await sync_awards_catalog()
+    except Exception as exc:
+        print(f"Не удалось синхронизировать каталог наград: {exc}")
 
     yield
 
@@ -47,11 +54,25 @@ app.include_router(movies.router)
 app.include_router(search.router)
 app.include_router(recommend.router)
 app.include_router(instagram.router)
+app.include_router(awards.router)
 
-# Статические файлы frontend
+# Статические файлы frontend (собранный Vite-бандл)
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
+assets_path = os.path.join(frontend_path, "assets")
+favicon_path = os.path.join(frontend_path, "favicon.svg")
+
+if os.path.exists(assets_path):
+    app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 if os.path.exists(frontend_path):
+    # Обратно совместимый путь для старых ссылок на /static/*
     app.mount("/static", StaticFiles(directory=frontend_path), name="static")
+
+
+@app.get("/favicon.svg")
+async def favicon():
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path, media_type="image/svg+xml")
+    return FileResponse(os.path.join(frontend_path, "favicon.ico")) if os.path.exists(os.path.join(frontend_path, "favicon.ico")) else {"detail": "not found"}
 
 
 @app.get("/")
