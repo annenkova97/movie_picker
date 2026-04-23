@@ -89,12 +89,15 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
   const uiAwards = useMemo<UiMovie[]>(
     () => (awardsQuery.data ?? []).map((m) => {
       const ui = toUiMovie(m);
-      // поле in_library в ответе /api/awards = false,
-      // но если этот фильм уже на полке пользователя — показываем состояние «на полке»
-      if (libraryIds.has(ui.imdbId)) ui.inLibrary = true;
+      // если фильм уже в библиотеке пользователя — отмечаем и копируем статус просмотра
+      const libraryMovie = uiMovies.find((lm) => lm.imdbId === ui.imdbId);
+      if (libraryMovie) {
+        ui.inLibrary = true;
+        ui.watched = libraryMovie.watched;
+      }
       return ui;
     }),
-    [awardsQuery.data, libraryIds],
+    [awardsQuery.data, uiMovies],
   );
 
   const [addError, setAddError] = useState<string | null>(null);
