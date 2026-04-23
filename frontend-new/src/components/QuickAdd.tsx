@@ -3,6 +3,8 @@ import type { Lang } from '../i18n';
 import { T } from '../i18n';
 import type { Theme } from '../theme';
 import type { RecSource } from '../types';
+import { searchMovies, addMovieByImdbId, addMovie } from '../api';
+import type { SearchResult } from '../api';
 
 interface Props {
   th: Theme;
@@ -19,90 +21,130 @@ function detectSource(input: string): RecSource {
   return 'personal';
 }
 
-function stepsFor(source: RecSource, lang: Lang): string[] {
-  if (source === 'instagram') {
-    return [T.statusOpenReels[lang], T.statusListen[lang], T.statusCaptions[lang], T.statusCollect[lang]];
-  }
-  if (source === 'telegram') {
-    return [T.statusOpenPost[lang], T.statusReadPost[lang], T.statusFindTitle[lang]];
-  }
-  return [T.statusLookup[lang], T.statusImdb[lang]];
+function isLink(input: string): boolean {
+  return /^https?:\/\//.test(input.trim()) || /instagram|t\.me|telegram/.test(input.toLowerCase());
 }
 
 export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
   const [v, setV] = useState('');
-  const [activeStep, setActiveStep] = useState(0);
-  const [loadingSource, setLoadingSource] = useState<RecSource>('personal');
-  const timerRef = useRef<number | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [saving, setSaving] = useState<string | null>(null); // imdb_id being saved
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Reset results when input is cleared
   useEffect(() => {
-    if (!loading) {
-      if (timerRef.current != null) { window.clearInterval(timerRef.current); timerRef.current = null; }
-      setActiveStep(0);
-      return;
+    if (!v.trim()) {
+      setResults(null);
+      setSearchError(null);
     }
-    const steps = stepsFor(loadingSource, lang);
-    setActiveStep(0);
-    timerRef.current = window.setInterval(() => {
-      setActiveStep((s) => (s + 1 < steps.length ? s + 1 : s));
-    }, 1100);
-    return () => {
-      if (timerRef.current != null) { window.clearInterval(timerRef.current); timerRef.current = null; }
-    };
-  }, [loading, loadingSource, lang]);
+  }, [v]);
 
-  const submit = async () => {
+  const handleSearch = async () => {
     const q = v.trim();
     if (!q) return;
-    const rec = detectSource(q);
-    setLoadingSource(rec);
-    await onAdd(q, rec);
-    setV('');
+
+    // Links go directly to onAdd (Instagram/Telegram flow)
+    if (isLink(q)) {
+      const rec = detectSource(q);
+      await onAdd(q, rec);
+      setV('');
+      return;
+    }
+
+    setSearching(true);
+    setSearchError(null);
+    setResults(null);
+    try {
+      const found = await searchMovies(q);
+      if (found.length === 0) {
+        // Fallback: try direct add which now has fuzzy logic on the backend
+        setSearchError(lang === 'ru'
+          ? 'Ничего не нашли. Попробуй уточнить название.'
+          : 'Nothing found. Try a different title.');
+      } else {
+        setResults(found);
+      }
+    } catch (e: any) {
+      setSearchError(e?.message || (lang === 'ru' ? 'Ошибка поиска' : 'Search error'));
+    } finally {
+      setSearching(false);
+    }
   };
 
-  const steps = stepsFor(loadingSource, lang);
+  const handleSave = async (r: SearchResult) => {
+    setSaving(r.imdb_id);
+    try {
+      await addMovieByImdbId(r.imdb_id);
+      // Trigger refresh via onAdd with a dummy call that signals success
+      await onAdd(`tt:${r.imdb_id}`, 'personal');
+      setResults(null);
+      setV('');
+    } catch (e: any) {
+      setSearchError(e?.message || (lang === 'ru' ? 'Не удалось сохранить' : 'Could not save'));
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch();
+    if (e.key === 'Escape') { setResults(null); setV(''); }
+  };
+
+  const isLoading = loading || searching;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <style>{`
-        @keyframes lentochka-pulse { 0%,100% { opacity: .35 } 50% { opacity: 1 } }
-        @keyframes lentochka-fadein { from { opacity: 0; transform: translateY(3px) } to { opacity: 1; transform: none } }
-        @keyframes lentochka-spin { to { transform: rotate(360deg) } }
+        @keyframes qa-spin { to { transform: rotate(360deg) } }
+        @keyframes qa-fadein { from { opacity: 0; transform: translateY(4px) } to { opacity: 1; transform: none } }
       `}</style>
+
       <div style={{
         display: 'flex', flexDirection: 'column', gap: 12,
         padding: 16, borderRadius: 18,
         border: `1.5px dashed ${th.lineStrong}`,
         background: th.bgAlt,
       }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'stretch', background: th.surface, border: `1px solid ${th.line}`, borderRadius: 12, padding: 4, boxShadow: th.shadow }}>
+        <div style={{
+          display: 'flex', gap: 8, alignItems: 'stretch',
+          background: th.surface, border: `1px solid ${th.line}`,
+          borderRadius: 12, padding: 4, boxShadow: th.shadow,
+        }}>
           <input
+            ref={inputRef}
             value={v}
             onChange={(e) => setV(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            onKeyDown={handleKeyDown}
             placeholder={T.quickAddPh[lang]}
-            disabled={loading}
+            disabled={isLoading}
             style={{
               flex: 1, border: 'none', outline: 'none', background: 'transparent',
               fontSize: 15, padding: '12px 14px', color: th.ink, fontFamily: 'inherit',
               minWidth: 0,
             }}
           />
-          <button onClick={submit} disabled={loading || !v.trim()} style={{
-            border: 'none', background: th.plum, color: th.plumInk,
-            padding: '0 20px', borderRadius: 9, cursor: loading ? 'wait' : 'pointer',
-            fontSize: 14, fontWeight: 600, letterSpacing: 0.2, whiteSpace: 'nowrap',
-            opacity: loading || !v.trim() ? 0.75 : 1,
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-          }}>
-            {loading && (
+          <button
+            onClick={handleSearch}
+            disabled={isLoading || !v.trim()}
+            style={{
+              border: 'none', background: th.plum, color: th.plumInk,
+              padding: '0 20px', borderRadius: 9, cursor: isLoading ? 'wait' : 'pointer',
+              fontSize: 14, fontWeight: 600, letterSpacing: 0.2, whiteSpace: 'nowrap',
+              opacity: isLoading || !v.trim() ? 0.75 : 1,
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+            }}
+          >
+            {isLoading && (
               <span style={{
                 width: 12, height: 12, borderRadius: 999,
                 border: `2px solid ${th.plumInk}`, borderTopColor: 'transparent',
-                animation: 'lentochka-spin 0.8s linear infinite', display: 'inline-block',
+                animation: 'qa-spin 0.8s linear infinite', display: 'inline-block',
               }} />
             )}
-            {T.find[lang]}
+            {results ? (lang === 'ru' ? 'Искать снова' : 'Search again') : T.find[lang]}
           </button>
         </div>
         <div style={{
@@ -111,39 +153,82 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
         }}>{T.sourceHint[lang]}</div>
       </div>
 
-      {loading && (
+      {/* Search results */}
+      {results && results.length > 0 && (
         <div style={{
           display: 'flex', flexDirection: 'column', gap: 6,
-          padding: '10px 14px', borderRadius: 10,
-          background: th.chipBg, border: `1px dashed ${th.line}`,
+          padding: '10px 12px', borderRadius: 14,
+          background: th.surface, border: `1px solid ${th.line}`,
+          animation: 'qa-fadein 0.2s ease both',
         }}>
-          {steps.map((s, i) => {
-            const done = i < activeStep;
-            const active = i === activeStep;
+          <div style={{
+            fontSize: 10.5, fontFamily: 'ui-monospace,monospace', color: th.ink3,
+            textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 2,
+          }}>
+            {lang === 'ru' ? `Нашли ${results.length} вариант${results.length === 1 ? '' : 'а'} — выбери нужный:` : `Found ${results.length} — pick one:`}
+          </div>
+          {results.map((r) => {
+            const isSavingThis = saving === r.imdb_id;
             return (
-              <div key={s} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                fontSize: 12.5, fontFamily: 'ui-monospace, monospace',
-                color: done ? th.ink2 : active ? th.ink : th.ink3,
-                animation: 'lentochka-fadein 0.35s ease both',
-                animationDelay: `${i * 90}ms`,
-              }}>
-                <span style={{
-                  width: 14, display: 'inline-flex', justifyContent: 'center',
-                  color: done ? th.plum : active ? th.ink : th.ink3,
-                  animation: active ? 'lentochka-pulse 1.1s ease-in-out infinite' : undefined,
-                }}>
-                  {done ? '✓' : active ? '•' : '·'}
-                </span>
-                <span style={{ opacity: done ? 0.7 : 1 }}>{s}…</span>
+              <div
+                key={r.imdb_id}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '10px 12px', borderRadius: 10,
+                  background: th.bgAlt, border: `1px solid ${th.line}`,
+                  cursor: 'pointer',
+                }}
+              >
+                {r.poster_url && (
+                  <img
+                    src={r.poster_url}
+                    alt={r.title}
+                    style={{ width: 36, height: 54, objectFit: 'cover', borderRadius: 5, flexShrink: 0 }}
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                )}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 600, fontSize: 14, color: th.ink, lineHeight: 1.2 }}>{r.title}</div>
+                  <div style={{ fontSize: 11, color: th.ink3, fontFamily: 'ui-monospace,monospace', marginTop: 2 }}>{r.year}</div>
+                </div>
+                <button
+                  onClick={() => handleSave(r)}
+                  disabled={!!saving}
+                  style={{
+                    border: 'none', background: th.plum, color: th.plumInk,
+                    padding: '7px 14px', borderRadius: 8,
+                    fontSize: 12.5, fontWeight: 600, cursor: saving ? 'wait' : 'pointer',
+                    opacity: saving && !isSavingThis ? 0.5 : 1, flexShrink: 0,
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}
+                >
+                  {isSavingThis && (
+                    <span style={{
+                      width: 10, height: 10, borderRadius: 999,
+                      border: `2px solid ${th.plumInk}`, borderTopColor: 'transparent',
+                      animation: 'qa-spin 0.8s linear infinite', display: 'inline-block',
+                    }} />
+                  )}
+                  {lang === 'ru' ? '+ Сохранить' : '+ Save'}
+                </button>
               </div>
             );
           })}
+          <button
+            onClick={() => { setResults(null); setV(''); }}
+            style={{
+              border: 'none', background: 'transparent', color: th.ink3,
+              fontSize: 12, cursor: 'pointer', padding: '4px 0', textAlign: 'left',
+              fontFamily: 'ui-monospace,monospace',
+            }}
+          >✕ {lang === 'ru' ? 'Отмена' : 'Cancel'}</button>
         </div>
       )}
 
-      {error && !loading && (
-        <div style={{ fontSize: 12, color: '#b4442e', fontFamily: 'ui-monospace, monospace' }}>{error}</div>
+      {(searchError || (error && !loading)) && !results && (
+        <div style={{ fontSize: 12, color: '#b4442e', fontFamily: 'ui-monospace, monospace' }}>
+          {searchError || error}
+        </div>
       )}
     </div>
   );

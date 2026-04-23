@@ -42,6 +42,21 @@ export function addMovie(query: string): Promise<ApiMovie> {
   return http('/api/movies', { method: 'POST', body: JSON.stringify({ query }) });
 }
 
+export interface SearchResult {
+  imdb_id: string;
+  title: string;
+  year: string;
+  poster_url: string | null;
+}
+
+export function searchMovies(q: string): Promise<SearchResult[]> {
+  return http(`/api/search?q=${encodeURIComponent(q)}`);
+}
+
+export function addMovieByImdbId(imdbId: string): Promise<ApiMovie> {
+  return http(`/api/movies/by-imdb/${imdbId}`, { method: 'POST' });
+}
+
 export function importFromInstagram(url: string): Promise<ApiMovie[]> {
   return http('/api/instagram/import', {
     method: 'POST',
