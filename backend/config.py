@@ -13,6 +13,9 @@ JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-insecure-secret-change-me")
 JWT_EXPIRES_DAYS = int(os.getenv("JWT_EXPIRES_DAYS", "30"))
 JWT_ALGORITHM = "HS256"
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+DATABASE_URL = os.getenv("DATABASE_URL", "")   # Set on Railway for PostgreSQL
+USE_POSTGRES = bool(DATABASE_URL)
+
 DATABASE_PATH = os.getenv(
     "DATABASE_PATH",
     os.path.join(os.path.dirname(__file__), "data", "movies.db"),
