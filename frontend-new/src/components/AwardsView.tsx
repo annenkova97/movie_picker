@@ -101,10 +101,16 @@ function AwardCard({ m, th, lang, saving, onSave, onOpen }: { m: UiMovie; th: Th
       </div>
       {alreadySaved ? (
         <div style={{
-          fontSize: 12, color: th.ink3, fontStyle: 'italic',
+          fontSize: 12.5, fontWeight: 600,
           padding: '8px 10px', textAlign: 'center', borderRadius: 8,
-          border: `1px solid ${th.line}`, background: th.bgAlt,
-        }}>{T.inMyLibrary[lang]}</div>
+          border: `1px solid ${m.watched ? '#3a7a4a' : th.plum}`,
+          background: m.watched ? '#edf7f0' : `${th.plum}18`,
+          color: m.watched ? '#2d6b3e' : th.plum,
+        }}>
+          {m.watched
+            ? `✓ ${lang === 'ru' ? 'Уже смотрел' : 'Watched'}`
+            : `♥ ${lang === 'ru' ? 'В очереди' : 'In watchlist'}`}
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }} onClick={stop}>
           <button
