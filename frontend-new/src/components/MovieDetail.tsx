@@ -76,7 +76,10 @@ export function MovieDetail({ th, lang, movie, saving, onClose, onSaveToWatch, o
           <div style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <Section title={T.detailPlot[lang]} th={th}>
               <div style={{ fontSize: 14, color: th.ink, lineHeight: 1.5 }}>
-                {(lang === 'ru' ? (movie.plotRu || movie.plot) : movie.plot) || movie.why || (
+                {(lang === 'ru'
+                  ? (movie.plotRu || movie.why || movie.plot)
+                  : (movie.plot || movie.why)
+                ) || (
                   <span style={{ color: th.ink3, fontStyle: 'italic' }}>{T.detailNoPlot[lang]}</span>
                 )}
               </div>
