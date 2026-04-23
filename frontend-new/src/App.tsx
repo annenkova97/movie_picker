@@ -152,6 +152,11 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
   };
 
   const handleAdd = async (query: string, rec: RecSource) => {
+    // 'tt:' prefix means QuickAdd already saved the movie via addMovieByImdbId — just refresh
+    if (query.startsWith('tt:')) {
+      qc.invalidateQueries({ queryKey: ['movies'] });
+      return;
+    }
     await addMut.mutateAsync({ query, rec });
   };
 
