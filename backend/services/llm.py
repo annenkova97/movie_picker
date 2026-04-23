@@ -11,6 +11,21 @@ class LLMService:
         self.client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_API_KEY)
         self.model = "claude-sonnet-4-6"
 
+    async def translate_movie_title(self, title: str) -> str:
+        """Перевод названия фильма с русского на английский для поиска в OMDB."""
+        prompt = f"""Переведи название фильма на английский язык для поиска в базе данных OMDB.
+Верни ТОЛЬКО английское название фильма, без кавычек, без пояснений, без лишних слов.
+Если название уже на английском — верни его без изменений.
+
+Название: {title}"""
+
+        message = await self.client.messages.create(
+            model=self.model,
+            max_tokens=60,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return message.content[0].text.strip().strip('"').strip("'")
+
     async def translate_plot(self, plot: str, title: str) -> str:
         """Перевод сюжета на русский с сохранением фактов и тона."""
         if not plot:

@@ -8,6 +8,13 @@ from backend.models.movie import (
     OMDBSearchResult
 )
 from backend.models.instagram import InstagramImportRequest
+from backend.models.user import (
+    User,
+    UserCreate,
+    UserLogin,
+    GoogleLogin,
+    AuthResponse,
+)
 
 __all__ = [
     "Movie",
@@ -17,5 +24,10 @@ __all__ = [
     "RecommendationRequest",
     "RecommendationResponse",
     "OMDBSearchResult",
-    "InstagramImportRequest"
+    "InstagramImportRequest",
+    "User",
+    "UserCreate",
+    "UserLogin",
+    "GoogleLogin",
+    "AuthResponse",
 ]

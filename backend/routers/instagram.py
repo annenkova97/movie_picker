@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
 from backend import database as db
-from backend.models import InstagramImportRequest, Movie
+from backend.auth import get_current_user
+from backend.models import InstagramImportRequest, Movie, User
 from backend.models.movie import OMDBSearchResult
 from backend.services.instagram_reader import (
     InstagramReaderError,
@@ -17,14 +18,24 @@ from backend.services.instagram_reader import (
     movieinfo_to_moviebase,
     cleanup_temp_files,
 )
+from backend.services.llm import llm_service
 from backend.services.omdb import omdb_service
 
 router = APIRouter(prefix="/api/instagram", tags=["instagram"])
 
 
 @router.post("/import", response_model=list[Movie])
-async def import_from_instagram(payload: InstagramImportRequest):
-    """Импорт фильмов из Instagram Reel по ссылке."""
+async def import_from_instagram(
+    payload: InstagramImportRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Импорт фильмов из Instagram Reel по ссылке.
+
+    Извлекает названия из транскрипта/подписи, ищет каждый в OMDB
+    и сохраняет полную запись (с постером, годом, рейтингом) в библиотеку
+    текущего пользователя. Дубликаты, уже лежащие на полке этого юзера,
+    пропускаются.
+    """
     try:
         url = validate_url(payload.url)
 
@@ -45,17 +56,65 @@ async def import_from_instagram(payload: InstagramImportRequest):
             payload.vision,
         )
 
+        if not movies_info:
+            raise HTTPException(
+                status_code=422,
+                detail="В этом Reel не нашлось упоминаний фильмов",
+            )
+
         added_movies: list[Movie] = []
+        already_in_library: list[str] = []
+        unmatched: list[str] = []
+        seen_ids: set[str] = set()
+
         for item in movies_info:
-            movie_base = movieinfo_to_moviebase(item)
-            existing = await db.get_movie_by_imdb_id(movie_base.imdb_id)
-            if existing:
+            display_title = item.title_ru or item.title_en or "?"
+            candidates = await _search_omdb_with_fallbacks(
+                item.title_en or "", item.title_ru or "", seen_ids, max_per_title=1,
+            )
+            if not candidates:
+                unmatched.append(display_title)
                 continue
-            created = await db.add_movie(movie_base, source="instagram")
+
+            imdb_id = candidates[0].imdb_id
+            existing = await db.get_user_movie_by_imdb_id(imdb_id, current_user.id)
+            if existing:
+                already_in_library.append(existing.title)
+                continue
+
+            movie_base = await omdb_service.get_movie_by_id(imdb_id)
+            if not movie_base:
+                unmatched.append(display_title)
+                continue
+
+            if movie_base.plot:
+                try:
+                    movie_base.description = await llm_service.generate_short_description(
+                        movie_base.plot, movie_base.title,
+                    )
+                except Exception as exc:
+                    print(f"[instagram/import] LLM description failed: {exc}")
+
+            created = await db.add_movie(
+                movie_base, user_id=current_user.id, source="instagram"
+            )
             added_movies.append(created)
+
+        if not added_movies:
+            if already_in_library:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Уже на полке: {', '.join(already_in_library)}",
+                )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Нашли упоминания, но не сопоставили с IMDb: {', '.join(unmatched)}",
+            )
 
         return added_movies
 
+    except HTTPException:
+        raise
     except InstagramReaderError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -127,7 +186,10 @@ async def _search_omdb_with_fallbacks(
 
 
 @router.post("/search", response_model=list[OMDBSearchResult])
-async def search_from_instagram(payload: InstagramImportRequest):
+async def search_from_instagram(
+    payload: InstagramImportRequest,
+    current_user: User = Depends(get_current_user),
+):
     """Извлечь названия фильмов из Instagram Reel и найти их в OMDB."""
     try:
         url = validate_url(payload.url)

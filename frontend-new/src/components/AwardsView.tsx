@@ -100,21 +100,33 @@ function AwardCard({ m, th, lang, saving, onSave, onOpen }: { m: UiMovie; th: Th
         <div style={{ fontSize: 11.5, color: th.ink3, marginTop: 2, fontFamily: 'ui-monospace,monospace' }}>{[m.director, m.year].filter(Boolean).join(' · ')}</div>
       </div>
       {alreadySaved ? (
-        <div style={{ fontSize: 11.5, color: th.ink3, fontStyle: 'italic', padding: '6px 0' }}>{T.inMyLibrary[lang]}</div>
+        <div style={{
+          fontSize: 12, color: th.ink3, fontStyle: 'italic',
+          padding: '8px 10px', textAlign: 'center', borderRadius: 8,
+          border: `1px solid ${th.line}`, background: th.bgAlt,
+        }}>{T.inMyLibrary[lang]}</div>
       ) : (
-        <div style={{ display: 'flex', gap: 6 }} onClick={stop}>
-          <button onClick={(e) => { e.stopPropagation(); onSave(m, false); }} disabled={saving} style={{
-            flex: 2, border: 'none', background: th.plum, color: th.plumInk,
-            padding: '8px 10px', borderRadius: 8, cursor: saving ? 'wait' : 'pointer',
-            fontSize: 11.5, fontWeight: 600, letterSpacing: 0.2,
-            opacity: saving ? 0.7 : 1,
-          }}>{T.addToWatch[lang]}</button>
-          <button onClick={(e) => { e.stopPropagation(); onSave(m, true); }} disabled={saving} style={{
-            flex: 1, border: `1px solid ${th.lineStrong}`, background: 'transparent', color: th.ink,
-            padding: '8px 10px', borderRadius: 8, cursor: saving ? 'wait' : 'pointer',
-            fontSize: 11.5, fontWeight: 500,
-            opacity: saving ? 0.7 : 1,
-          }}>{T.addToWatched[lang]}</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }} onClick={stop}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onSave(m, false); }}
+            disabled={saving}
+            style={{
+              border: 'none', background: th.plum, color: th.plumInk,
+              padding: '10px 12px', borderRadius: 9, cursor: saving ? 'wait' : 'pointer',
+              fontSize: 13, fontWeight: 700, letterSpacing: 0.1,
+              opacity: saving ? 0.7 : 1, width: '100%',
+            }}
+          >{saving ? '…' : `+ ${lang === 'ru' ? 'Хочу посмотреть' : 'Add to watchlist'}`}</button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onSave(m, true); }}
+            disabled={saving}
+            style={{
+              border: `1.5px solid ${th.line}`, background: 'transparent', color: th.ink2,
+              padding: '9px 12px', borderRadius: 9, cursor: saving ? 'wait' : 'pointer',
+              fontSize: 12.5, fontWeight: 500, width: '100%',
+              opacity: saving ? 0.7 : 1,
+            }}
+          >{`✓ ${lang === 'ru' ? 'Уже смотрел' : 'Already watched'}`}</button>
         </div>
       )}
     </div>

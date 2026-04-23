@@ -1,7 +1,27 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(pip install:*)",
+      "Bash(python3:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh pr list:*)",
+      "Bash(git pull:*)",
+      "Bash(kill 3326 3672 3700)",
+      "Bash(kill -9 3326 3672)",
+      "Bash(awk '{print $2, $10}')",
+      "Bash(python -c ' *)",
+      "WebFetch(domain:www.anthropic.com)",
+      "Bash(git checkout *)",
+      "Bash(gh pr create --base main --head frontend-prep --title 'Prepare project for external frontend \\(Lovable/v0/Claude Design\\)' --body ' *)",
+      "Bash(curl -sS https://moviepicker-production-69ac.up.railway.app/api/health)",
+      "Bash(curl -sS -o /dev/null -w \"docs status: %{http_code}\\\\n\" https://moviepicker-production-69ac.up.railway.app/docs)",
+      "Bash(awk 'NR>=100 && NR<=184 {print NR\": \"substr\\($0,1,200\\)}' \"/Users/nannenkova/Downloads/Lentochka Home.html\")",
+      "Bash(awk 'NR==181,NR==184 {print NR\": \"length\\($0\\)}' \"/Users/nannenkova/Downloads/Lentochka Home.html\")",
+      "Bash(sqlite3 /Users/nannenkova/Apps/movie_picker/backend/data/movies.db \".tables\")",
+      "Bash(sqlite3 /Users/nannenkova/Apps/movie_picker/backend/data/movies.db \".schema\")",
+      "Bash(npx tsc *)"
     ]
   }
 }

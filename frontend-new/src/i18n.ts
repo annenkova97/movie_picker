@@ -4,16 +4,27 @@ type Pair = { ru: string; en: string };
 
 export const T = {
   appName:     { ru: 'Ленточка',                      en: 'Lentochka' } as Pair,
-  tagline:     { ru: 'кино, которое ты хочешь посмотреть', en: 'the films you want to watch' } as Pair,
+  tagline:     { ru: 'кино, которое хочется смотреть', en: 'the films you want to watch' } as Pair,
   addMovie:    { ru: '+ Добавить фильм',              en: '+ Add a film' } as Pair,
   mood:        { ru: 'Настроение',                    en: 'Mood' } as Pair,
   moodPh:      { ru: 'лёгкое, ламповое, под пиццу…',  en: 'light, cozy, pizza-night\u2026' } as Pair,
   pick:        { ru: 'Подобрать',                     en: 'Pick one' } as Pair,
   quickAdd:    { ru: 'Быстро сохранить',              en: 'Quick save' } as Pair,
-  quickAddPh:  { ru: 'вставь ссылку или название…',   en: 'paste a link or title\u2026' } as Pair,
+  quickAddPh:  { ru: 'вставь ссылку из соцсети…',     en: 'paste a link from social…' } as Pair,
   save:        { ru: 'Сохранить',                     en: 'Save' } as Pair,
-  toWatch:     { ru: 'Хочу посмотреть',               en: 'To watch' } as Pair,
-  watched:     { ru: 'Уже смотрел',                   en: 'Watched' } as Pair,
+  find:        { ru: 'Найти',                         en: 'Find' } as Pair,
+
+  statusOpenReels:  { ru: 'открываю Reels',            en: 'opening Reels' } as Pair,
+  statusListen:     { ru: 'слушаю аудио',              en: 'listening to audio' } as Pair,
+  statusCaptions:   { ru: 'читаю подписи',             en: 'reading captions' } as Pair,
+  statusCollect:    { ru: 'собираю названия',          en: 'collecting titles' } as Pair,
+  statusOpenPost:   { ru: 'открываю пост',             en: 'opening the post' } as Pair,
+  statusReadPost:   { ru: 'читаю текст',               en: 'reading the text' } as Pair,
+  statusFindTitle:  { ru: 'нахожу фильм',              en: 'pulling out the title' } as Pair,
+  statusLookup:     { ru: 'ищу в базе',                en: 'looking it up' } as Pair,
+  statusImdb:       { ru: 'сверяюсь с IMDb',           en: 'checking IMDb' } as Pair,
+  toWatch:     { ru: 'Хочу',                          en: 'To watch' } as Pair,
+  watched:     { ru: 'Смотрел',                       en: 'Watched' } as Pair,
   friendMode:  { ru: 'Показать другу',                en: 'Share with a friend' } as Pair,
 
   shelfToday:  { ru: 'Скорее всего сегодня',          en: 'Probably tonight' } as Pair,
@@ -42,8 +53,26 @@ export const T = {
   source_personal:  { ru: 'Личное',        en: 'Personal' } as Pair,
 
   moodChips: {
-    ru: ['поплакать', 'классика', 'с друзьями', 'романтичный вечер', 'коротко, до 100 мин', 'что-то странное'],
-    en: ['a good cry', 'classic', 'with friends', 'romantic night', 'under 100 min', 'something weird'],
+    ru: ['поплакать', 'классика', 'с друзьями', 'романтичный вечер', 'что-то странное'],
+    en: ['a good cry', 'classic', 'with friends', 'romantic night', 'something weird'],
+  },
+
+  moodGenreLabel:    { ru: 'Жанр',         en: 'Genre' } as Pair,
+  moodDurationLabel: { ru: 'Длительность', en: 'Length' } as Pair,
+  moodEraLabel:      { ru: 'Эпоха',        en: 'Era' } as Pair,
+  moodAnyOption:     { ru: 'Любой',        en: 'Any' } as Pair,
+
+  moodGenres: {
+    ru: ['Комедия', 'Драма', 'Триллер', 'Фантастика', 'Документалка', 'Мелодрама', 'Ужасы', 'Анимация'],
+    en: ['Comedy', 'Drama', 'Thriller', 'Sci-Fi', 'Documentary', 'Romance', 'Horror', 'Animation'],
+  },
+  moodDurations: {
+    ru: ['До 90 мин', '90–120 мин', 'Больше 2 часов'],
+    en: ['Under 90 min', '90–120 min', 'Over 2 hours'],
+  },
+  moodEras: {
+    ru: ['2020-е', '2010-е', '2000-е', '90-е', 'Старое кино'],
+    en: ['2020s', '2010s', '2000s', '90s', 'Classic'],
   },
 
   pickHeader:  { ru: 'Твой выбор на вечер',   en: 'Your pick for tonight' } as Pair,
@@ -67,7 +96,10 @@ export const T = {
 
   watchedSub:  { ru: 'моя полка, можно показать', en: 'my shelf, hand over the phone' } as Pair,
 
-  awardsTab:     { ru: 'Награды',               en: 'Awards' } as Pair,
+  awardsTab:     { ru: 'Стоит',                 en: 'Worth it' } as Pair,
+  pickTonight:   { ru: '✨ Подобрать на вечер',   en: '✨ Pick for tonight' } as Pair,
+  sourceHint:    { ru: '◎ Instagram · ✈ Telegram · ♥ Друзья', en: '◎ Instagram · ✈ Telegram · ♥ Friends' } as Pair,
+  pickMoodTitle: { ru: 'Какое настроение?',       en: 'What\u2019s the mood?' } as Pair,
   awardsSub:     { ru: 'Оскар, Золотой глобус, Канны', en: 'Oscar, Golden Globe, Cannes' } as Pair,
   awardsEmpty:   { ru: 'Каталог пока пуст',      en: 'Catalog is empty for now' } as Pair,
   addToWatch:    { ru: '+ в «Хочу»',             en: '+ to "To watch"' } as Pair,
@@ -79,4 +111,7 @@ export const T = {
   detailAwards:  { ru: 'Награды',                 en: 'Awards' } as Pair,
   detailImdb:    { ru: 'На IMDb',                 en: 'On IMDb' } as Pair,
   detailNoPlot:  { ru: 'Описание пока не загружено', en: 'No description yet' } as Pair,
+
+  authLoading:   { ru: 'Проверяем вход…',         en: 'Checking sign-in\u2026' } as Pair,
+  logout:        { ru: 'Выйти',                   en: 'Sign out' } as Pair,
 };

@@ -6,7 +6,7 @@ from fastapi.responses import FileResponse
 import os
 
 from backend import database as db
-from backend.routers import movies, search, recommend, instagram, awards
+from backend.routers import movies, search, recommend, instagram, awards, auth
 from backend.services.awards_seed import sync_awards_catalog
 
 
@@ -50,6 +50,7 @@ app.add_middleware(
 )
 
 # Подключаем роутеры API
+app.include_router(auth.router)
 app.include_router(movies.router)
 app.include_router(search.router)
 app.include_router(recommend.router)
