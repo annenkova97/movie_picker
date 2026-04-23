@@ -56,12 +56,23 @@ async def add_movie(
                 print(f"Перевод запроса: '{query}' → '{search_query}'")
             except Exception as e:
                 print(f"Ошибка перевода, используем оригинал: {e}")
+
+        # Сначала пробуем точное совпадение
         movie_base = await omdb_service.get_movie_by_title(search_query)
+
+        # Если не нашли — нечёткий поиск, берём первый результат
+        if not movie_base:
+            print(f"Точный поиск не дал результатов, пробуем нечёткий: '{search_query}'")
+            results = await omdb_service.search_movies(search_query)
+            if results:
+                movie_base = await omdb_service.get_movie_by_id(results[0].imdb_id)
+                if movie_base:
+                    print(f"Нашли похожее: '{movie_base.title}'")
 
     if not movie_base:
         raise HTTPException(
             status_code=404,
-            detail=f"Фильм '{query}' не найден в OMDB"
+            detail=f"Ничего похожего на «{query}» не нашли. Попробуй уточнить название."
         )
 
     existing = await db.get_user_movie_by_imdb_id(movie_base.imdb_id, current_user.id)

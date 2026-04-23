@@ -22,6 +22,11 @@ backend/data/instagram_tmp/
 # Frontend build artifacts
 frontend-new/node_modules/
 frontend-new/dist/
-
-
+frontend-new/*.mjs
 frontend-new/tsconfig.tsbuildinfo
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# FUSE filesystem artifacts
+backend/data/.fuse_hidden*
