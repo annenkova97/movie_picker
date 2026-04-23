@@ -18,6 +18,9 @@ DATABASE_PATH = os.getenv(
     os.path.join(os.path.dirname(__file__), "data", "movies.db"),
 )
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+
+DATABASE_URL = os.getenv("DATABASE_URL", "")  # Set on Railway for PostgreSQL
+USE_POSTGRES = bool(DATABASE_URL)
 OMDB_BASE_URL = "http://www.omdbapi.com/"
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
