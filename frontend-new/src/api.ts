@@ -1,13 +1,26 @@
 import type { ApiMovie } from './types';
+import { getToken, handleUnauthorized } from './auth';
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(url, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
-  });
+  const token = getToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  const res = await fetch(url, { ...init, headers });
+  if (res.status === 401) {
+    handleUnauthorized();
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(text || `${res.status} ${res.statusText}`);
+    let message = text || `${res.status} ${res.statusText}`;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed.detail === 'string') message = parsed.detail;
+    } catch {}
+    throw new Error(message);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -27,6 +40,13 @@ export function saveToLibrary(id: number, watched = false): Promise<ApiMovie> {
 
 export function addMovie(query: string): Promise<ApiMovie> {
   return http('/api/movies', { method: 'POST', body: JSON.stringify({ query }) });
+}
+
+export function importFromInstagram(url: string): Promise<ApiMovie[]> {
+  return http('/api/instagram/import', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
 }
 
 export function patchMovie(id: number, body: { is_watched?: boolean }): Promise<ApiMovie> {

@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addMovie, deleteMovie, listAwards, listMovies, patchMovie, recommend, saveToLibrary } from './api';
+import { addMovie, deleteMovie, importFromInstagram, listAwards, listMovies, patchMovie, recommend, saveToLibrary } from './api';
+import { useAuth } from './auth';
+import { AuthScreen } from './components/AuthScreen';
 import { Home } from './components/Home';
 import { MovieDetail } from './components/MovieDetail';
 import { PickReveal } from './components/PickReveal';
 import { TopBar } from './components/TopBar';
 import type { Lang } from './i18n';
 import { T } from './i18n';
-import { THEMES, type ThemeName } from './theme';
+import { THEMES, type Theme, type ThemeName } from './theme';
 import { toUiMovie, type RecSource, type UiMovie } from './types';
 
 function usePersistent<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
@@ -22,6 +24,46 @@ export default function App() {
   const [lang, setLang] = usePersistent<Lang>('lentochka.lang', 'ru');
   const [themeName, setThemeName] = usePersistent<ThemeName>('lentochka.theme', 'light');
   const th = THEMES[themeName];
+  const qc = useQueryClient();
+  const auth = useAuth();
+
+  useEffect(() => {
+    document.body.style.background = th.bg;
+    document.body.style.color = th.ink;
+    document.body.style.margin = '0';
+    document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+  }, [th]);
+
+  // При выходе / переключении юзера — чистим кэш запросов библиотеки.
+  useEffect(() => {
+    qc.removeQueries({ queryKey: ['movies'] });
+    qc.removeQueries({ queryKey: ['awards'] });
+  }, [auth.user?.id, qc]);
+
+  if (auth.loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: th.ink3, fontSize: 13 }}>
+        {T.authLoading[lang]}
+      </div>
+    );
+  }
+
+  if (!auth.user) {
+    return <AuthScreen th={th} lang={lang} />;
+  }
+
+  return <AppInner th={th} lang={lang} setLang={setLang} themeName={themeName} setThemeName={setThemeName} />;
+}
+
+interface AppInnerProps {
+  th: Theme;
+  lang: Lang;
+  setLang: (l: Lang) => void;
+  themeName: ThemeName;
+  setThemeName: (t: ThemeName) => void;
+}
+
+function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps) {
   const qc = useQueryClient();
 
   const moviesQuery = useQuery({
@@ -57,7 +99,13 @@ export default function App() {
 
   const [addError, setAddError] = useState<string | null>(null);
   const addMut = useMutation({
-    mutationFn: (q: string) => addMovie(q),
+    mutationFn: async ({ query, rec }: { query: string; rec: RecSource }) => {
+      if (rec === 'instagram') {
+        const movies = await importFromInstagram(query);
+        return movies[0];
+      }
+      return addMovie(query);
+    },
     onMutate: () => setAddError(null),
     onError: (e: unknown) => setAddError(e instanceof Error ? e.message : String(e)),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['movies'] }),
@@ -103,8 +151,8 @@ export default function App() {
     }
   };
 
-  const handleAdd = async (query: string, _rec: RecSource) => {
-    await addMut.mutateAsync(query);
+  const handleAdd = async (query: string, rec: RecSource) => {
+    await addMut.mutateAsync({ query, rec });
   };
 
   const handleMovieClick = (m: UiMovie) => {
@@ -115,24 +163,9 @@ export default function App() {
     toggleMut.mutate({ id: m.id, watched: !m.watched });
   };
 
-  const focusAdd = () => {
-    const el = document.querySelector<HTMLInputElement>('input[placeholder="' + T.quickAddPh[lang] + '"]');
-    el?.focus();
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
-  useEffect(() => {
-    document.body.style.background = th.bg;
-    document.body.style.color = th.ink;
-    document.body.style.margin = '0';
-    document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
-  }, [th]);
-
-  void removeMut; // reserved for future delete UI
-
   return (
     <>
-      <TopBar th={th} lang={lang} setLang={setLang} theme={themeName} setTheme={setThemeName} onAdd={focusAdd} />
+      <TopBar th={th} lang={lang} setLang={setLang} theme={themeName} setTheme={setThemeName} />
       <Home
         th={th}
         lang={lang}
@@ -163,7 +196,7 @@ export default function App() {
         th={th}
         lang={lang}
         movie={detail}
-        saving={saveAwardMut.isPending || toggleMut.isPending}
+        saving={saveAwardMut.isPending || toggleMut.isPending || removeMut.isPending}
         onClose={() => setDetail(null)}
         onSaveToWatch={(m) => {
           saveAwardMut.mutate({ id: m.id, watched: false });
@@ -175,6 +208,10 @@ export default function App() {
         }}
         onToggleWatched={(m) => {
           handleToggleWatched(m);
+          setDetail(null);
+        }}
+        onRemove={(m) => {
+          removeMut.mutate(m.id);
           setDetail(null);
         }}
       />

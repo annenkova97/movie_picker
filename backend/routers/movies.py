@@ -1,8 +1,14 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
+import re
 from backend import database as db
-from backend.models import Movie, MovieCreate, MovieUpdate, MovieBase
+from backend.auth import get_current_user
+from backend.models import Movie, MovieCreate, MovieUpdate, User
 from backend.services import omdb_service, llm_service
+
+
+def _has_cyrillic(text: str) -> bool:
+    return bool(re.search('[а-яА-ЯёЁ]', text))
 
 router = APIRouter(prefix="/api/movies", tags=["movies"])
 
@@ -12,35 +18,45 @@ async def get_movies(
     source: Optional[str] = Query(None, description="Фильтр по источнику: personal, top100, awards"),
     is_watched: Optional[bool] = Query(None, description="Фильтр по статусу просмотра"),
     in_library: Optional[bool] = Query(None, description="Только фильмы, сохранённые в библиотеке пользователя"),
+    current_user: User = Depends(get_current_user),
 ):
-    """Получить список фильмов с опциональной фильтрацией"""
-    return await db.get_all_movies(source=source, is_watched=is_watched, in_library=in_library)
+    """Фильмы текущего пользователя."""
+    return await db.get_all_movies(
+        user_id=current_user.id,
+        source=source,
+        is_watched=is_watched,
+        in_library=in_library,
+    )
 
 
 @router.get("/{movie_id}", response_model=Movie)
-async def get_movie(movie_id: int):
-    """Получить фильм по ID"""
-    movie = await db.get_movie_by_id(movie_id)
+async def get_movie(movie_id: int, current_user: User = Depends(get_current_user)):
+    """Получить фильм пользователя по ID."""
+    movie = await db.get_user_movie_by_id(movie_id, current_user.id)
     if not movie:
         raise HTTPException(status_code=404, detail="Фильм не найден")
     return movie
 
 
 @router.post("", response_model=Movie)
-async def add_movie(movie_data: MovieCreate):
-    """
-    Добавить фильм в список.
-    Можно указать название или IMDb ID (tt1234567).
-    """
+async def add_movie(
+    movie_data: MovieCreate,
+    current_user: User = Depends(get_current_user),
+):
+    """Добавить фильм в личную библиотеку по названию или IMDb ID (tt1234567)."""
     query = movie_data.query.strip()
 
-    # Определяем, это IMDb ID или название
     if query.startswith("tt") and query[2:].isdigit():
-        # Это IMDb ID
         movie_base = await omdb_service.get_movie_by_id(query)
     else:
-        # Это название — ищем по названию
-        movie_base = await omdb_service.get_movie_by_title(query)
+        search_query = query
+        if _has_cyrillic(query):
+            try:
+                search_query = await llm_service.translate_movie_title(query)
+                print(f"Перевод запроса: '{query}' → '{search_query}'")
+            except Exception as e:
+                print(f"Ошибка перевода, используем оригинал: {e}")
+        movie_base = await omdb_service.get_movie_by_title(search_query)
 
     if not movie_base:
         raise HTTPException(
@@ -48,15 +64,13 @@ async def add_movie(movie_data: MovieCreate):
             detail=f"Фильм '{query}' не найден в OMDB"
         )
 
-    # Проверяем, не добавлен ли уже этот фильм
-    existing = await db.get_movie_by_imdb_id(movie_base.imdb_id)
+    existing = await db.get_user_movie_by_imdb_id(movie_base.imdb_id, current_user.id)
     if existing:
         raise HTTPException(
             status_code=400,
-            detail=f"Фильм '{movie_base.title}' уже есть в списке"
+            detail=f"Фильм '{movie_base.title}' уже есть у вас в списке"
         )
 
-    # Генерируем краткое описание через LLM
     if movie_base.plot:
         try:
             description = await llm_service.generate_short_description(
@@ -65,12 +79,11 @@ async def add_movie(movie_data: MovieCreate):
             )
             movie_base.description = description
         except Exception as e:
-            # Если LLM не доступен, оставляем без описания
             print(f"Ошибка генерации описания: {e}")
 
-    # Сохраняем в базу
     return await db.add_movie(
         movie_base,
+        user_id=current_user.id,
         source="personal",
         rec_source=movie_data.rec_source,
         rec_note=movie_data.rec_note,
@@ -78,10 +91,13 @@ async def add_movie(movie_data: MovieCreate):
 
 
 @router.post("/by-imdb/{imdb_id}", response_model=Movie)
-async def add_movie_by_imdb_id(imdb_id: str, source: str = "personal"):
-    """Добавить фильм по IMDb ID (используется для топ-100)"""
-    # Проверяем, не добавлен ли уже
-    existing = await db.get_movie_by_imdb_id(imdb_id)
+async def add_movie_by_imdb_id(
+    imdb_id: str,
+    source: str = "personal",
+    current_user: User = Depends(get_current_user),
+):
+    """Добавить фильм в библиотеку пользователя по IMDb ID."""
+    existing = await db.get_user_movie_by_imdb_id(imdb_id, current_user.id)
     if existing:
         return existing
 
@@ -89,7 +105,6 @@ async def add_movie_by_imdb_id(imdb_id: str, source: str = "personal"):
     if not movie_base:
         raise HTTPException(status_code=404, detail=f"Фильм {imdb_id} не найден")
 
-    # Генерируем описание
     if movie_base.plot:
         try:
             description = await llm_service.generate_short_description(
@@ -100,13 +115,17 @@ async def add_movie_by_imdb_id(imdb_id: str, source: str = "personal"):
         except Exception:
             pass
 
-    return await db.add_movie(movie_base, source=source)
+    return await db.add_movie(movie_base, user_id=current_user.id, source=source)
 
 
 @router.patch("/{movie_id}", response_model=Movie)
-async def update_movie(movie_id: int, update: MovieUpdate):
-    """Обновить поля фильма (статус просмотра, источник рекомендации и заметку)"""
-    movie = await db.get_movie_by_id(movie_id)
+async def update_movie(
+    movie_id: int,
+    update: MovieUpdate,
+    current_user: User = Depends(get_current_user),
+):
+    """Обновить поля фильма пользователя."""
+    movie = await db.get_user_movie_by_id(movie_id, current_user.id)
     if not movie:
         raise HTTPException(status_code=404, detail="Фильм не найден")
 
@@ -115,6 +134,7 @@ async def update_movie(movie_id: int, update: MovieUpdate):
 
     return await db.update_movie(
         movie_id,
+        user_id=current_user.id,
         is_watched=update.is_watched,
         rec_source=update.rec_source,
         rec_note=update.rec_note,
@@ -122,23 +142,75 @@ async def update_movie(movie_id: int, update: MovieUpdate):
 
 
 @router.post("/{movie_id}/save", response_model=Movie)
-async def save_to_library(movie_id: int, is_watched: bool = False):
-    """Положить фильм из каталога (например, awards) на полку пользователя.
+async def save_to_library(
+    movie_id: int,
+    is_watched: bool = False,
+    current_user: User = Depends(get_current_user),
+):
+    """Сохранить фильм из каталога (awards) в личную библиотеку пользователя.
 
-    `is_watched=True` → сразу в «Уже смотрел», иначе в «Хочу посмотреть».
+    Копирует запись каталога: каталог остаётся общим, у пользователя появляется
+    своя запись.
     """
-    movie = await db.get_movie_by_id(movie_id)
-    if not movie:
+    catalog = await db.get_award_catalog_entry(movie_id)
+    if not catalog:
+        # возможно movie_id — это уже личная запись пользователя; тогда просто её проапдейтим
+        own = await db.get_user_movie_by_id(movie_id, current_user.id)
+        if own:
+            return await db.update_movie(
+                movie_id,
+                user_id=current_user.id,
+                is_watched=is_watched,
+                in_library=True,
+            )
         raise HTTPException(status_code=404, detail="Фильм не найден")
 
-    updated = await db.update_movie(movie_id, is_watched=is_watched, in_library=True)
-    return updated
+    existing = await db.get_user_movie_by_imdb_id(catalog.imdb_id, current_user.id)
+    if existing:
+        return await db.update_movie(
+            existing.id,
+            user_id=current_user.id,
+            is_watched=is_watched,
+            in_library=True,
+        )
+
+    # копия каталога в личную библиотеку
+    from backend.models import MovieBase
+    movie_base = MovieBase(
+        imdb_id=catalog.imdb_id,
+        title=catalog.title,
+        original_title=catalog.original_title,
+        year=catalog.year,
+        genres=catalog.genres,
+        description=catalog.description,
+        plot=catalog.plot,
+        plot_ru=catalog.plot_ru,
+        cast=catalog.cast,
+        director=catalog.director,
+        poster_url=catalog.poster_url,
+        imdb_rating=catalog.imdb_rating,
+        awards=catalog.awards,
+    )
+    new_row = await db.add_movie(
+        movie_base,
+        user_id=current_user.id,
+        source="awards",
+        in_library=True,
+        award=catalog.award,
+        award_year=catalog.award_year,
+    )
+    if is_watched:
+        new_row = await db.update_movie(new_row.id, user_id=current_user.id, is_watched=True)
+    return new_row
 
 
 @router.delete("/{movie_id}")
-async def delete_movie(movie_id: int):
-    """Удалить фильм из списка"""
-    success = await db.delete_movie(movie_id)
+async def delete_movie(
+    movie_id: int,
+    current_user: User = Depends(get_current_user),
+):
+    """Удалить фильм из библиотеки пользователя."""
+    success = await db.delete_movie(movie_id, current_user.id)
     if not success:
         raise HTTPException(status_code=404, detail="Фильм не найден")
     return {"message": "Фильм удалён"}

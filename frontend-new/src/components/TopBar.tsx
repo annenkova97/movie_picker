@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react';
+import { useAuth } from '../auth';
 import type { Lang } from '../i18n';
 import { T } from '../i18n';
 import type { Theme, ThemeName } from '../theme';
@@ -8,11 +10,25 @@ interface Props {
   setLang: (l: Lang) => void;
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
-  onAdd: () => void;
   compact?: boolean;
 }
 
-export function TopBar({ th, lang, setLang, theme, setTheme, onAdd, compact = false }: Props) {
+export function TopBar({ th, lang, setLang, theme, setTheme, compact = false }: Props) {
+  const { user, logout } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [menuOpen]);
+
+  const initial = (user?.name || user?.email || '?').trim().charAt(0).toUpperCase();
+
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -39,7 +55,6 @@ export function TopBar({ th, lang, setLang, theme, setTheme, onAdd, compact = fa
           <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontWeight: 700, fontSize: compact ? 15 : 19, color: th.ink, letterSpacing: -0.3, whiteSpace: 'nowrap' }}>
             {T.appName[lang]}
           </div>
-          {!compact && <div style={{ fontSize: 11, color: th.ink3, marginTop: 3, fontStyle: 'italic' }}>{T.tagline[lang]}</div>}
         </div>
       </div>
 
@@ -63,14 +78,53 @@ export function TopBar({ th, lang, setLang, theme, setTheme, onAdd, compact = fa
           }}>
           {theme === 'light' ? '☾' : '☀'}
         </button>
-        <button onClick={onAdd} style={{
-          border: 'none', background: th.plum, color: th.plumInk,
-          padding: compact ? '7px 11px' : '10px 18px', borderRadius: 999, cursor: 'pointer',
-          fontSize: compact ? 12 : 13, fontWeight: 600, letterSpacing: 0.2, whiteSpace: 'nowrap',
-          boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
-        }}>
-          {compact ? (lang === 'ru' ? '+ Добавить' : '+ Add') : T.addMovie[lang]}
-        </button>
+        {user && (
+          <div ref={wrapRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              title={user.email}
+              style={{
+                border: `1px solid ${th.line}`, background: th.chipBg, color: th.ink,
+                width: compact ? 30 : 36, height: compact ? 30 : 36, borderRadius: '50%',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: compact ? 12 : 14, fontWeight: 700, overflow: 'hidden', padding: 0,
+              }}
+            >
+              {user.avatar_url ? (
+                <img src={user.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              ) : (
+                initial
+              )}
+            </button>
+            {menuOpen && (
+              <div style={{
+                position: 'absolute', right: 0, top: 'calc(100% + 8px)',
+                minWidth: 220, background: th.surface,
+                border: `1px solid ${th.line}`, borderRadius: 12,
+                boxShadow: th.shadow, padding: 10, zIndex: 20,
+              }}>
+                <div style={{ padding: '4px 8px 8px 8px', borderBottom: `1px solid ${th.line}`, marginBottom: 6 }}>
+                  {user.name && (
+                    <div style={{ fontSize: 13, fontWeight: 600, color: th.ink, marginBottom: 2 }}>{user.name}</div>
+                  )}
+                  <div style={{ fontSize: 12, color: th.ink3, wordBreak: 'break-all' }}>{user.email}</div>
+                </div>
+                <button
+                  onClick={() => { setMenuOpen(false); logout(); }}
+                  style={{
+                    width: '100%', textAlign: 'left', padding: '8px 8px',
+                    background: 'transparent', border: 'none', color: th.ink,
+                    borderRadius: 8, cursor: 'pointer', fontSize: 13,
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = th.chipBg)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  {T.logout[lang]}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

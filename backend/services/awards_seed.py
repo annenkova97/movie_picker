@@ -13,7 +13,7 @@ CATALOG_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", 
 
 async def _ingest_one(imdb_id: str, award: str, award_year: Optional[int]) -> bool:
     """Возвращает True, если фильм добавлен; False — если уже был или не найден в OMDB."""
-    existing = await db.get_movie_by_imdb_id(imdb_id)
+    existing = await db.get_award_by_imdb_id(imdb_id)
     if existing:
         return False
 
@@ -24,6 +24,7 @@ async def _ingest_one(imdb_id: str, award: str, award_year: Optional[int]) -> bo
 
     await db.add_movie(
         movie_base,
+        user_id=None,
         source="awards",
         in_library=False,
         award=award,

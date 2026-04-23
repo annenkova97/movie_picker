@@ -13,9 +13,10 @@ interface Props {
   onSaveToWatch?: (m: UiMovie) => void;
   onSaveAsWatched?: (m: UiMovie) => void;
   onToggleWatched?: (m: UiMovie) => void;
+  onRemove?: (m: UiMovie) => void;
 }
 
-export function MovieDetail({ th, lang, movie, saving, onClose, onSaveToWatch, onSaveAsWatched, onToggleWatched }: Props) {
+export function MovieDetail({ th, lang, movie, saving, onClose, onSaveToWatch, onSaveAsWatched, onToggleWatched, onRemove }: Props) {
   if (!movie) return null;
 
   const meta = [
@@ -118,6 +119,22 @@ export function MovieDetail({ th, lang, movie, saving, onClose, onSaveToWatch, o
               padding: '10px 16px', borderRadius: 10, cursor: 'pointer',
               fontSize: 13, fontWeight: 500,
             }}>{movie.watched ? `↺ ${T.unwatch[lang]}` : `✓ ${T.markWatched[lang]}`}</button>
+          )}
+          {movie.inLibrary && onRemove && (
+            <button
+              onClick={() => {
+                const msg = lang === 'ru'
+                  ? `Удалить «${movie.title}» из списка?`
+                  : `Remove "${movie.title}" from your list?`;
+                if (window.confirm(msg)) onRemove(movie);
+              }}
+              disabled={saving}
+              style={{
+                border: `1px solid ${th.line}`, background: 'transparent', color: '#b4442e',
+                padding: '10px 14px', borderRadius: 10, cursor: saving ? 'wait' : 'pointer',
+                fontSize: 13, fontWeight: 500, opacity: saving ? 0.7 : 1,
+              }}
+            >✕ {T.remove[lang]}</button>
           )}
 
           <div style={{ flex: 1 }} />
