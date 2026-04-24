@@ -5,6 +5,8 @@ type Pair = { ru: string; en: string };
 export const T = {
   appName:     { ru: 'Ленточка',                      en: 'Lentochka' } as Pair,
   tagline:     { ru: 'кино, которое хочется смотреть', en: 'the films you want to watch' } as Pair,
+  taglineSub:  { ru: 'сохраняй рекомендации из ленты — и не теряй',
+                 en: 'save what you see in your feed — don\u2019t lose it' } as Pair,
   addMovie:    { ru: '+ Добавить фильм',              en: '+ Add a film' } as Pair,
   mood:        { ru: 'Настроение',                    en: 'Mood' } as Pair,
   moodPh:      { ru: 'лёгкое, ламповое, под пиццу…',  en: 'light, cozy, pizza-night\u2026' } as Pair,
@@ -23,7 +25,7 @@ export const T = {
   statusFindTitle:  { ru: 'нахожу фильм',              en: 'pulling out the title' } as Pair,
   statusLookup:     { ru: 'ищу в базе',                en: 'looking it up' } as Pair,
   statusImdb:       { ru: 'сверяюсь с IMDb',           en: 'checking IMDb' } as Pair,
-  toWatch:     { ru: 'Хочу',                          en: 'To watch' } as Pair,
+  toWatch:     { ru: 'Сохранённое',                   en: 'Saved' } as Pair,
   watched:     { ru: 'Смотрел',                       en: 'Watched' } as Pair,
   friendMode:  { ru: 'Показать другу',                en: 'Share with a friend' } as Pair,
 
@@ -82,7 +84,7 @@ export const T = {
   pickWatch:   { ru: 'Смотрим',                en: 'Watch it' } as Pair,
 
   quickParsed: { ru: 'Нашли',                  en: 'Found' } as Pair,
-  quickKeep:   { ru: 'В «Хочу посмотреть»',    en: 'To "To watch"' } as Pair,
+  quickKeep:   { ru: 'Сохранить',              en: 'Save' } as Pair,
   quickEdit:   { ru: 'Отмена',                 en: 'Cancel' } as Pair,
 
   markWatched: { ru: 'Отметить просмотренным', en: 'Mark as watched' } as Pair,
@@ -98,11 +100,12 @@ export const T = {
 
   awardsTab:     { ru: 'Стоит',                 en: 'Worth it' } as Pair,
   pickTonight:   { ru: '✨ Подобрать на вечер',   en: '✨ Pick for tonight' } as Pair,
-  sourceHint:    { ru: '◎ Instagram · ✈ Telegram · ♥ Друзья', en: '◎ Instagram · ✈ Telegram · ♥ Friends' } as Pair,
+  sourceHint:    { ru: 'из Instagram, Telegram или от друга — распознаем автоматически',
+                   en: 'from Instagram, Telegram or a friend — we\u2019ll recognize it automatically' } as Pair,
   pickMoodTitle: { ru: 'Какое настроение?',       en: 'What\u2019s the mood?' } as Pair,
   awardsSub:     { ru: 'Оскар, Золотой глобус, Канны', en: 'Oscar, Golden Globe, Cannes' } as Pair,
   awardsEmpty:   { ru: 'Каталог пока пуст',      en: 'Catalog is empty for now' } as Pair,
-  addToWatch:    { ru: '+ в «Хочу»',             en: '+ to "To watch"' } as Pair,
+  addToWatch:    { ru: '+ Сохранить',            en: '+ Save' } as Pair,
   addToWatched:  { ru: '✓ Уже смотрел',          en: '✓ Already watched' } as Pair,
   inMyLibrary:   { ru: 'уже на полке',           en: 'already on your shelf' } as Pair,
 

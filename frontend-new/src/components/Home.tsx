@@ -60,6 +60,12 @@ export function Home(props: Props) {
           } as React.CSSProperties}>
             {T.tagline[lang]}
           </div>
+          <div style={{
+            fontSize: 13.5, lineHeight: 1.35, color: th.ink2,
+            marginTop: 8, letterSpacing: -0.1,
+          }}>
+            {T.taglineSub[lang]}
+          </div>
         </div>
 
         <QuickAdd th={th} lang={lang} onAdd={onAdd} loading={adding} error={addError} />

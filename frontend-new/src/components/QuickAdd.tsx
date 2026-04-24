@@ -154,7 +154,7 @@ function PreviewPanel({ th, lang, imdbId, onSaveWatch, onSaveWatched, onClose, s
                   cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1,
                 }}
               >
-                ♥ {lang === 'ru' ? 'Хочу посмотреть' : 'Want to watch'}
+                ♥ {T.quickKeep[lang]}
               </button>
               <button
                 onClick={onSaveWatched}

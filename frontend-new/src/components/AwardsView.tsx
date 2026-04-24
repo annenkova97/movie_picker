@@ -122,7 +122,7 @@ function AwardCard({ m, th, lang, saving, onSave, onOpen }: { m: UiMovie; th: Th
               fontSize: 13, fontWeight: 700, letterSpacing: 0.1,
               opacity: saving ? 0.7 : 1, width: '100%',
             }}
-          >{saving ? '…' : `+ ${lang === 'ru' ? 'Хочу посмотреть' : 'Add to watchlist'}`}</button>
+          >{saving ? '…' : T.addToWatch[lang]}</button>
           <button
             onClick={(e) => { e.stopPropagation(); onSave(m, true); }}
             disabled={saving}
