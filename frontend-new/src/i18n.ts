@@ -5,8 +5,8 @@ type Pair = { ru: string; en: string };
 export const T = {
   appName:     { ru: 'Ленточка',                      en: 'Lentochka' } as Pair,
   tagline:     { ru: 'кино, которое хочется смотреть', en: 'the films you want to watch' } as Pair,
-  taglineSub:  { ru: 'сохраняй все рекомендации',
-                 en: 'save every recommendation' } as Pair,
+  taglineSub:  { ru: 'сохраняй рекомендации — смотри, что действительно хотелось',
+                 en: 'save recommendations — watch what you really wanted' } as Pair,
   addMovie:    { ru: '+ Добавить фильм',              en: '+ Add a film' } as Pair,
   mood:        { ru: 'Настроение',                    en: 'Mood' } as Pair,
   moodPh:      { ru: 'лёгкое, ламповое, под пиццу…',  en: 'light, cozy, pizza-night\u2026' } as Pair,
