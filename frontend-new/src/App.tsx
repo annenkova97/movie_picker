@@ -24,7 +24,6 @@ export default function App() {
   const [lang, setLang] = usePersistent<Lang>('lentochka.lang', 'ru');
   const [themeName, setThemeName] = usePersistent<ThemeName>('lentochka.theme', 'light');
   const th = THEMES[themeName];
-  const qc = useQueryClient();
   const auth = useAuth();
 
   useEffect(() => {
@@ -33,12 +32,6 @@ export default function App() {
     document.body.style.margin = '0';
     document.body.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
   }, [th]);
-
-  // При выходе / переключении юзера — чистим кэш запросов библиотеки.
-  useEffect(() => {
-    qc.removeQueries({ queryKey: ['movies'] });
-    qc.removeQueries({ queryKey: ['awards'] });
-  }, [auth.user?.id, qc]);
 
   if (auth.loading) {
     return (
@@ -65,10 +58,13 @@ interface AppInnerProps {
 
 function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps) {
   const qc = useQueryClient();
+  const auth = useAuth();
+  const userId = auth.user?.id;
 
   const moviesQuery = useQuery({
-    queryKey: ['movies'],
+    queryKey: ['movies', userId],
     queryFn: listMovies,
+    enabled: userId != null,
   });
 
   const awardsQuery = useQuery({
