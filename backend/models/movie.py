@@ -65,3 +65,17 @@ class OMDBSearchResult(BaseModel):
     title: str
     year: str
     poster_url: Optional[str] = None
+
+
+class MoviePreview(BaseModel):
+    """Детальный превью фильма для показа перед добавлением (без сохранения в БД)"""
+    imdb_id: str
+    title: str
+    year: Optional[int] = None
+    poster_url: Optional[str] = None
+    imdb_rating: Optional[float] = None
+    genres: list[str] = []
+    plot: Optional[str] = None
+    director: Optional[str] = None
+    cast: list[str] = []
+    awards: Optional[str] = None

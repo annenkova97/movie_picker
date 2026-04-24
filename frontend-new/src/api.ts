@@ -49,8 +49,25 @@ export interface SearchResult {
   poster_url: string | null;
 }
 
+export interface MoviePreview {
+  imdb_id: string;
+  title: string;
+  year: number | null;
+  poster_url: string | null;
+  imdb_rating: number | null;
+  genres: string[];
+  plot: string | null;
+  director: string | null;
+  cast: string[];
+  awards: string | null;
+}
+
 export function searchMovies(q: string): Promise<SearchResult[]> {
   return http(`/api/search?q=${encodeURIComponent(q)}`);
+}
+
+export function getMoviePreview(imdbId: string): Promise<MoviePreview> {
+  return http(`/api/search/preview/${imdbId}`);
 }
 
 export function addMovieByImdbId(imdbId: string): Promise<ApiMovie> {
