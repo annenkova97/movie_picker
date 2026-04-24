@@ -5,8 +5,8 @@ type Pair = { ru: string; en: string };
 export const T = {
   appName:     { ru: 'Ленточка',                      en: 'Lentochka' } as Pair,
   tagline:     { ru: 'кино, которое хочется смотреть', en: 'the films you want to watch' } as Pair,
-  taglineSub:  { ru: 'сохраняй рекомендации из ленты — и не теряй',
-                 en: 'save what you see in your feed — don\u2019t lose it' } as Pair,
+  taglineSub:  { ru: 'сохраняй все рекомендации в одном месте',
+                 en: 'save every recommendation in one place' } as Pair,
   addMovie:    { ru: '+ Добавить фильм',              en: '+ Add a film' } as Pair,
   mood:        { ru: 'Настроение',                    en: 'Mood' } as Pair,
   moodPh:      { ru: 'лёгкое, ламповое, под пиццу…',  en: 'light, cozy, pizza-night\u2026' } as Pair,
@@ -38,10 +38,10 @@ export const T = {
   shelfAnim:   { ru: 'Анимация',                      en: 'Animation' } as Pair,
   shelfThr:    { ru: 'Триллеры',                      en: 'Thrillers' } as Pair,
 
-  emptyTitle:  { ru: 'Пока пусто — и это нормально',
-                 en: 'Empty for now — that\u2019s fine' } as Pair,
-  emptySub:    { ru: 'Увидел рекомендацию в ленте? Вставь ссылку или название — и фильм окажется здесь.',
-                 en: 'Saw a recommendation in your feed? Paste a link or title — a film lands here.' } as Pair,
+  emptyTitle:  { ru: 'Какой фильм тебе недавно советовали?',
+                 en: 'What did someone recently recommend?' } as Pair,
+  emptySub:    { ru: 'Вставь ссылку или название — сохраним с постером и рейтингом.',
+                 en: 'Paste a link or title — we\u2019ll save it with poster and rating.' } as Pair,
 
   min:         { ru: 'мин',                           en: 'min' } as Pair,
   myScore:     { ru: 'моё',                           en: 'mine' } as Pair,
