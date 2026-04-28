@@ -11,9 +11,9 @@
 
 ## Безопасность
 
-- [ ] **CORS прибить к конкретным origins** — `backend/main.py:46` сейчас `allow_origins=["*"]` + `allow_credentials=True`. Заменить на список (Railway URL фронта + `http://localhost:5173` для dev).
-- [ ] **JWT_SECRET без дефолта** — `backend/config.py:12` имеет fallback `"dev-only-insecure-secret-change-me"`. Фейлить старт, если переменная не задана.
-- [ ] **Password policy** — `backend/models/user.py:16` поднять `min_length` 6 → 8.
+- [x] **CORS прибить к конкретным origins** — список через env-переменную `CORS_ALLOW_ORIGINS` (запятая как разделитель). На Railway надо проставить URL фронта.
+- [x] **JWT_SECRET без дефолта** — старт фейлится, если переменная не задана.
+- [x] **Password policy** — `min_length` поднят до 8.
 - [ ] **Rate-limit на auth** — `slowapi` на `/auth/login`, `/auth/register`, `/auth/google` (анти-брутфорс).
 - [ ] **Rate-limit на платные API** — `/api/recommend`, `/api/instagram/*`, `/api/search` (за ними OMDB / Claude / OpenAI).
 
@@ -25,7 +25,7 @@
 ## Данные
 
 - [ ] **Daily backup Postgres** в Railway (настройка в UI).
-- [ ] **Выпилить «первый юзер забирает 62 бесхозных фильма»** — `backend/routers/auth.py:38-50` и `:101-104`. На текущем инстансе уже сработало; оставлять опасно для копий.
+- [x] **Выпилить «первый юзер забирает 62 бесхозных фильма»** — удалён код в `auth.py` и helper-функции в `db_sqlite.py` / `db_postgres.py`.
 
 ## Контентные фичи
 
