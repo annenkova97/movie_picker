@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 import os
 
 from backend import database as db
+from backend.config import CORS_ALLOW_ORIGINS
 from backend.routers import movies, search, recommend, instagram, awards, auth
 from backend.services.awards_seed import sync_awards_catalog
 
@@ -40,10 +41,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS для локальной разработки
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

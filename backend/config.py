@@ -9,12 +9,22 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-insecure-secret-change-me")
+JWT_SECRET = os.getenv("JWT_SECRET", "")
+if not JWT_SECRET:
+    raise RuntimeError(
+        "JWT_SECRET is not set. Generate one with `openssl rand -hex 32` "
+        "and put it in .env (or Railway env vars)."
+    )
 JWT_EXPIRES_DAYS = int(os.getenv("JWT_EXPIRES_DAYS", "30"))
 JWT_ALGORITHM = "HS256"
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 DATABASE_URL = os.getenv("DATABASE_URL", "")   # Set on Railway for PostgreSQL
 USE_POSTGRES = bool(DATABASE_URL)
+
+# Список origin'ов, которым разрешён CORS. Запятая как разделитель.
+# Пример: "https://lentochka.up.railway.app,http://localhost:5173"
+_cors_raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:5173,http://localhost:8000")
+CORS_ALLOW_ORIGINS = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
 DATABASE_PATH = os.getenv(
     "DATABASE_PATH",

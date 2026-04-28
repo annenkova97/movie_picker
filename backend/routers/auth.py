@@ -35,20 +35,11 @@ async def register(payload: UserCreate):
             status_code=status.HTTP_409_CONFLICT,
             detail="Пользователь с таким email уже есть. Войдите или используйте Google.",
         )
-    # Первый зарегистрировавшийся забирает себе историческую библиотеку (62 фильма без владельца).
-    is_first_user = not await db.has_any_users()
-
     user_row = await db.create_user(
         email=payload.email,
         password_hash=hash_password(payload.password),
         name=payload.name,
     )
-
-    if is_first_user:
-        claimed = await db.claim_orphan_library_for_user(user_row["id"])
-        if claimed:
-            print(f"[auth] первый юзер {user_row['email']} забрал {claimed} фильмов")
-
     return await _issue(user_row)
 
 
@@ -76,8 +67,6 @@ async def google_login(payload: GoogleLogin):
     name = claims.get("name")
     picture = claims.get("picture")
 
-    is_first_user = not await db.has_any_users()
-
     user_row = await db.get_user_by_google_sub(google_sub)
     if not user_row and email:
         # пользователь уже есть по email — прилинкуем Google
@@ -98,10 +87,6 @@ async def google_login(payload: GoogleLogin):
             name=name,
             avatar_url=picture,
         )
-        if is_first_user:
-            claimed = await db.claim_orphan_library_for_user(user_row["id"])
-            if claimed:
-                print(f"[auth] первый юзер {user_row['email']} забрал {claimed} фильмов")
 
     return await _issue(user_row)
 
