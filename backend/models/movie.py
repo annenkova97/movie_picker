@@ -48,9 +48,28 @@ class MovieUpdate(BaseModel):
 
 
 class RecommendationRequest(BaseModel):
-    """Запрос на рекомендацию"""
+    """Запрос на рекомендацию.
+
+    Если ``library`` задан — рекомендации строятся по нему (guest-режим, без auth).
+    Если ``library`` пуст и есть auth-токен — берётся библиотека пользователя из БД.
+    Если нет ни того, ни другого — рекомендация будет «холодной»: без контекста.
+    """
     query: str  # "что-то лёгкое", "драма", "с Камбербэтчем"
     include_watched: bool = False
+    library: Optional[list[Movie]] = None
+
+
+class BulkImportItem(BaseModel):
+    """Одна запись для миграции гостевой библиотеки в аккаунт."""
+    imdb_id: str
+    is_watched: bool = False
+    rec_source: Optional[str] = None
+    rec_note: Optional[str] = None
+    source: Optional[str] = "personal"
+
+
+class BulkImportRequest(BaseModel):
+    items: list[BulkImportItem]
 
 
 class RecommendationResponse(BaseModel):

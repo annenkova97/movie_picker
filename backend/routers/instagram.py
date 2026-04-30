@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 
 from backend import database as db
 from backend.auth import get_current_user
-from backend.models import InstagramImportRequest, Movie, User
+from backend.models import InstagramImportRequest, Movie, MovieBase, User
 from backend.models.movie import OMDBSearchResult
 from backend.services.instagram_reader import (
     InstagramReaderError,
@@ -24,30 +24,29 @@ from backend.services.omdb import omdb_service
 router = APIRouter(prefix="/api/instagram", tags=["instagram"])
 
 
-@router.post("/import", response_model=list[Movie])
-async def import_from_instagram(
+async def _parse_reel_to_moviebases(
     payload: InstagramImportRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Импорт фильмов из Instagram Reel по ссылке.
+) -> tuple[list[MovieBase], list[str]]:
+    """Скачивает Reel, извлекает фильмы и резолвит их в MovieBase.
 
-    Извлекает названия из транскрипта/подписи, ищет каждый в OMDB
-    и сохраняет полную запись (с постером, годом, рейтингом) в библиотеку
-    текущего пользователя. Дубликаты, уже лежащие на полке этого юзера,
-    пропускаются.
+    Возвращает ``(resolved, unmatched_titles)``. Не сохраняет ничего в БД.
+    Бросает ``HTTPException(422)`` если в Reel нет упоминаний фильмов.
+
+    Эту функцию используют оба endpoint'а: ``/import`` (для авторизованного
+    пользователя) и ``/parse`` (для гостя).
     """
+    url = validate_url(payload.url)
+
+    video_path, caption = await run_in_threadpool(download_reel, url)
+    audio_path = await run_in_threadpool(extract_audio, video_path)
+
+    frame_paths: list[str] = []
+    if payload.vision:
+        frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
+
+    transcript = await run_in_threadpool(transcribe, audio_path)
+
     try:
-        url = validate_url(payload.url)
-
-        video_path, caption = await run_in_threadpool(download_reel, url)
-        audio_path = await run_in_threadpool(extract_audio, video_path)
-
-        frame_paths: list[str] = []
-        if payload.vision:
-            frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
-
-        transcript = await run_in_threadpool(transcribe, audio_path)
-
         movies_info = await run_in_threadpool(
             extract_movies,
             transcript,
@@ -62,8 +61,7 @@ async def import_from_instagram(
                 detail="В этом Reel не нашлось упоминаний фильмов",
             )
 
-        added_movies: list[Movie] = []
-        already_in_library: list[str] = []
+        resolved: list[MovieBase] = []
         unmatched: list[str] = []
         seen_ids: set[str] = set()
 
@@ -77,11 +75,6 @@ async def import_from_instagram(
                 continue
 
             imdb_id = candidates[0].imdb_id
-            existing = await db.get_user_movie_by_imdb_id(imdb_id, current_user.id)
-            if existing:
-                already_in_library.append(existing.title)
-                continue
-
             movie_base = await omdb_service.get_movie_by_id(imdb_id)
             if not movie_base:
                 unmatched.append(display_title)
@@ -93,8 +86,65 @@ async def import_from_instagram(
                         movie_base.plot, movie_base.title,
                     )
                 except Exception as exc:
-                    print(f"[instagram/import] LLM description failed: {exc}")
+                    print(f"[instagram/parse] LLM description failed: {exc}")
 
+            resolved.append(movie_base)
+
+        return resolved, unmatched
+    finally:
+        cleanup_targets = []
+        if audio_path:
+            cleanup_targets.append(audio_path)
+        if frame_paths:
+            cleanup_targets.extend(frame_paths)
+        cleanup_temp_files(cleanup_targets)
+
+
+@router.post("/parse", response_model=list[MovieBase])
+async def parse_instagram(payload: InstagramImportRequest):
+    """Распарсить Reel и вернуть фильмы без сохранения в БД.
+
+    Публичный endpoint — используется гостями. Клиент сам кладёт результат
+    в localStorage.
+    """
+    try:
+        resolved, unmatched = await _parse_reel_to_moviebases(payload)
+        if not resolved:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Нашли упоминания, но не сопоставили с IMDb: {', '.join(unmatched)}",
+            )
+        return resolved
+    except HTTPException:
+        raise
+    except InstagramReaderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/import", response_model=list[Movie])
+async def import_from_instagram(
+    payload: InstagramImportRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Импорт фильмов из Instagram Reel в библиотеку авторизованного пользователя.
+
+    Дубликаты, уже лежащие на полке этого юзера, пропускаются.
+    """
+    try:
+        resolved, unmatched = await _parse_reel_to_moviebases(payload)
+
+        added_movies: list[Movie] = []
+        already_in_library: list[str] = []
+
+        for movie_base in resolved:
+            existing = await db.get_user_movie_by_imdb_id(
+                movie_base.imdb_id, current_user.id
+            )
+            if existing:
+                already_in_library.append(existing.title)
+                continue
             created = await db.add_movie(
                 movie_base, user_id=current_user.id, source="instagram"
             )
@@ -119,15 +169,6 @@ async def import_from_instagram(
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-    finally:
-        cleanup_targets = []
-        try:
-            if 'audio_path' in locals() and audio_path:
-                cleanup_targets.append(audio_path)
-            if 'frame_paths' in locals() and frame_paths:
-                cleanup_targets.extend(frame_paths)
-        finally:
-            cleanup_temp_files(cleanup_targets)
 
 
 async def _search_omdb_with_fallbacks(

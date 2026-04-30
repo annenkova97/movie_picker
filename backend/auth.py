@@ -115,3 +115,24 @@ async def get_current_user(
             detail="Пользователь не найден",
         )
     return _user_dict_to_model(row)
+
+
+async def get_current_user_optional(
+    creds: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> Optional[User]:
+    """Like get_current_user, but returns None instead of raising for guest requests.
+
+    Use this for endpoints that work both for authenticated users and anonymous
+    guests (e.g. recommendations with inline library, search, awards-style reads).
+    Invalid/expired tokens still return None — let the caller decide whether to
+    fall back to guest behaviour or treat it as unauthenticated.
+    """
+    if not creds or creds.scheme.lower() != "bearer":
+        return None
+    user_id = decode_access_token(creds.credentials)
+    if user_id is None:
+        return None
+    row = await db.get_user_by_id(user_id)
+    if not row:
+        return None
+    return _user_dict_to_model(row)

@@ -1,7 +1,6 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException
 import re
-from backend.auth import get_current_user
-from backend.models import OMDBSearchResult, MoviePreview, User
+from backend.models import OMDBSearchResult, MoviePreview
 from backend.services import omdb_service, llm_service
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -14,9 +13,11 @@ def _has_cyrillic(text: str) -> bool:
 @router.get("", response_model=list[OMDBSearchResult])
 async def search_movies(
     q: str = Query(..., min_length=1, description="Поисковый запрос"),
-    current_user: User = Depends(get_current_user),
 ):
-    """Поиск фильмов в OMDB по названию. Автоматически переводит русские запросы."""
+    """Поиск фильмов в OMDB по названию. Автоматически переводит русские запросы.
+
+    Публичный: stateless-обёртка над OMDB, не использует user_id.
+    """
     search_q = q
     if _has_cyrillic(q):
         try:
@@ -31,7 +32,6 @@ async def search_movies(
 @router.get("/preview/{imdb_id}", response_model=MoviePreview)
 async def get_movie_preview(
     imdb_id: str,
-    current_user: User = Depends(get_current_user),
 ):
     """Получить детальный превью фильма по IMDb ID — без сохранения в БД."""
     movie = await omdb_service.get_movie_by_id(imdb_id)

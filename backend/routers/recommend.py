@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
-from backend.auth import get_current_user
+from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from backend.auth import get_current_user_optional
 from backend.models import RecommendationRequest, RecommendationResponse, User
 from backend.services import llm_service
 from backend import database as db
@@ -10,18 +11,34 @@ router = APIRouter(prefix="/api/recommend", tags=["recommendations"])
 @router.post("", response_model=RecommendationResponse)
 async def get_recommendations(
     request: RecommendationRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    """Рекомендации по библиотеке текущего пользователя."""
-    if request.include_watched:
-        movies = await db.get_all_movies(user_id=current_user.id)
+    """Рекомендации.
+
+    Источник библиотеки выбирается так:
+    - если в payload передан ``library`` — используем его (guest-режим, auth не нужен);
+    - иначе если есть auth — берём библиотеку пользователя из БД;
+    - иначе возвращаем 401.
+    """
+    if request.library is not None:
+        movies = request.library
+        if not request.include_watched:
+            movies = [m for m in movies if not m.is_watched]
+    elif current_user is not None:
+        if request.include_watched:
+            movies = await db.get_all_movies(user_id=current_user.id)
+        else:
+            movies = await db.get_unwatched_movies(user_id=current_user.id)
     else:
-        movies = await db.get_unwatched_movies(user_id=current_user.id)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Передай библиотеку в поле 'library' или войди в аккаунт",
+        )
 
     if not movies:
         return RecommendationResponse(
             movies=[],
-            explanation="В вашем списке пока нет непросмотренных фильмов. Добавьте фильмы, чтобы получить рекомендации."
+            explanation="В вашем списке пока нет фильмов. Сохраните хотя бы один — тогда смогу подобрать."
         )
 
     recommended_ids, explanation = await llm_service.recommend_movies(

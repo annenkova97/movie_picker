@@ -3,7 +3,13 @@ from typing import Optional
 import re
 from backend import database as db
 from backend.auth import get_current_user
-from backend.models import Movie, MovieCreate, MovieUpdate, User
+from backend.models import (
+    BulkImportRequest,
+    Movie,
+    MovieCreate,
+    MovieUpdate,
+    User,
+)
 from backend.services import omdb_service, llm_service
 
 
@@ -225,3 +231,58 @@ async def delete_movie(
     if not success:
         raise HTTPException(status_code=404, detail="Фильм не найден")
     return {"message": "Фильм удалён"}
+
+
+@router.post("/bulk-import", response_model=list[Movie])
+async def bulk_import(
+    payload: BulkImportRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Импорт массива фильмов в библиотеку пользователя.
+
+    Используется при миграции гостевой (localStorage) библиотеки в аккаунт сразу
+    после регистрации/логина. Идемпотентен по ``(user_id, imdb_id)``: если фильм
+    уже на полке у этого пользователя — обновляем ``is_watched`` и оставляем
+    запись (локальное состояние гостя считается более свежим). Если OMDB не
+    знает фильм — пропускаем без ошибки, чтобы один битый imdb_id не уронил
+    весь импорт.
+    """
+    imported: list[Movie] = []
+    for item in payload.items:
+        existing = await db.get_user_movie_by_imdb_id(item.imdb_id, current_user.id)
+        if existing:
+            updated = await db.update_movie(
+                existing.id,
+                user_id=current_user.id,
+                is_watched=item.is_watched,
+                in_library=True,
+            )
+            imported.append(updated or existing)
+            continue
+
+        movie_base = await omdb_service.get_movie_by_id(item.imdb_id)
+        if not movie_base:
+            print(f"[bulk-import] OMDB has no record for {item.imdb_id}, skipping")
+            continue
+
+        if movie_base.plot:
+            try:
+                movie_base.description = await llm_service.generate_short_description(
+                    movie_base.plot, movie_base.title,
+                )
+            except Exception as exc:
+                print(f"[bulk-import] LLM description failed for {item.imdb_id}: {exc}")
+
+        new_row = await db.add_movie(
+            movie_base,
+            user_id=current_user.id,
+            source=item.source or "personal",
+            rec_source=item.rec_source,
+            rec_note=item.rec_note,
+        )
+        if item.is_watched:
+            new_row = await db.update_movie(
+                new_row.id, user_id=current_user.id, is_watched=True,
+            )
+        imported.append(new_row)
+    return imported

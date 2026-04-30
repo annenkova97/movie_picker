@@ -7,6 +7,8 @@ from backend.models.movie import (
     RecommendationResponse,
     OMDBSearchResult,
     MoviePreview,
+    BulkImportItem,
+    BulkImportRequest,
 )
 from backend.models.instagram import InstagramImportRequest
 from backend.models.user import (
@@ -26,6 +28,8 @@ __all__ = [
     "RecommendationResponse",
     "OMDBSearchResult",
     "MoviePreview",
+    "BulkImportItem",
+    "BulkImportRequest",
     "InstagramImportRequest",
     "User",
     "UserCreate",
