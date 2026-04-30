@@ -11,13 +11,30 @@ interface Props {
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
   onSignInClick?: () => void;
-  compact?: boolean;
 }
 
-export function TopBar({ th, lang, setLang, theme, setTheme, onSignInClick, compact = false }: Props) {
+// Below this width the brand block (logo + lang toggle + theme + sign-in)
+// no longer fits side-by-side at full size, so we shrink paddings, fonts,
+// and control sizes so "Lentochka" stops getting overlapped by the toggle.
+const COMPACT_BREAKPOINT = 640;
+
+function useIsCompact(threshold: number): boolean {
+  const [compact, setCompact] = useState(() =>
+    typeof window === 'undefined' ? false : window.innerWidth < threshold
+  );
+  useEffect(() => {
+    const onResize = () => setCompact(window.innerWidth < threshold);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [threshold]);
+  return compact;
+}
+
+export function TopBar({ th, lang, setLang, theme, setTheme, onSignInClick }: Props) {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const compact = useIsCompact(COMPACT_BREAKPOINT);
 
   useEffect(() => {
     if (!menuOpen) return;
