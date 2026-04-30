@@ -19,6 +19,8 @@ import {
   getMoviePreview,
   importFromInstagram as apiImportFromInstagram,
   importFromInstagramParse,
+  importFromTelegram as apiImportFromTelegram,
+  importFromTelegramParse,
   listMovies as apiListMovies,
   patchMovie as apiPatchMovie,
   saveToLibrary as apiSaveToLibrary,
@@ -114,7 +116,9 @@ function previewToApiMovie(
 // MovieBase from /api/instagram/parse — has all metadata except DB id/watched/added_at.
 type ParsedMovieBase = Awaited<ReturnType<typeof importFromInstagramParse>>[number];
 
-function parsedToApiMovie(base: ParsedMovieBase): ApiMovie {
+type ParseSource = 'instagram' | 'telegram';
+
+function parsedToApiMovie(base: ParsedMovieBase, source: ParseSource): ApiMovie {
   return {
     id: syntheticId(base.imdb_id),
     imdb_id: base.imdb_id,
@@ -131,8 +135,8 @@ function parsedToApiMovie(base: ParsedMovieBase): ApiMovie {
     imdb_rating: base.imdb_rating ?? null,
     awards: base.awards ?? null,
     is_watched: false,
-    source: 'instagram',
-    rec_source: 'instagram',
+    source,
+    rec_source: source,
     rec_note: null,
     in_library: true,
     award: null,
@@ -158,6 +162,14 @@ export interface MovieLibrary {
   patch(id: number, fields: { is_watched?: boolean }): Promise<ApiMovie>;
   remove(id: number): Promise<void>;
   importFromInstagram(url: string): Promise<ApiMovie[]>;
+  importFromTelegram(url: string): Promise<ApiMovie[]>;
+  /**
+   * Merge an external snapshot (e.g. someone else's shared list) into this
+   * library. Existing entries (matched by imdb_id) are kept untouched —
+   * receiver doesn't get their watched flags clobbered. Returns the records
+   * actually added.
+   */
+  absorbShared(movies: ApiMovie[]): Promise<ApiMovie[]>;
 }
 
 // ── BackendLibrary ───────────────────────────────────────────────────────────
@@ -195,6 +207,23 @@ class BackendLibrary implements MovieLibrary {
 
   importFromInstagram(url: string) {
     return apiImportFromInstagram(url);
+  }
+
+  importFromTelegram(url: string) {
+    return apiImportFromTelegram(url);
+  }
+
+  async absorbShared(movies: ApiMovie[]): Promise<ApiMovie[]> {
+    if (movies.length === 0) return [];
+    return bulkImportMovies(
+      movies.map((m) => ({
+        imdb_id: m.imdb_id,
+        is_watched: false,
+        rec_source: 'friends',
+        rec_note: null,
+        source: 'friends',
+      })),
+    );
   }
 }
 
@@ -287,7 +316,42 @@ class LocalLibrary implements MovieLibrary {
   }
 
   async importFromInstagram(url: string): Promise<ApiMovie[]> {
-    const parsed = await importFromInstagramParse(url);
+    return this._mergeParsed(await importFromInstagramParse(url), 'instagram');
+  }
+
+  async importFromTelegram(url: string): Promise<ApiMovie[]> {
+    return this._mergeParsed(await importFromTelegramParse(url), 'telegram');
+  }
+
+  async absorbShared(movies: ApiMovie[]): Promise<ApiMovie[]> {
+    if (movies.length === 0) return [];
+    const all = readLocal();
+    const seen = new Set(all.map((m) => m.imdb_id));
+    const added: ApiMovie[] = [];
+    for (const m of movies) {
+      if (seen.has(m.imdb_id)) continue;
+      if (all.length + added.length >= LOCAL_LIBRARY_MAX_RECORDS) {
+        throw new LocalLibraryFullError();
+      }
+      added.push({
+        ...m,
+        id: syntheticId(m.imdb_id),
+        is_watched: false,
+        in_library: true,
+        rec_source: 'friends',
+        source: 'friends',
+        added_at: nowIso(),
+      });
+    }
+    if (added.length === 0) return [];
+    writeLocal([...all, ...added]);
+    return added;
+  }
+
+  private _mergeParsed(
+    parsed: ParsedMovieBase[],
+    source: ParseSource,
+  ): ApiMovie[] {
     const all = readLocal();
     const seen = new Set(all.map((m) => m.imdb_id));
     const added: ApiMovie[] = [];
@@ -296,7 +360,7 @@ class LocalLibrary implements MovieLibrary {
       if (all.length + added.length >= LOCAL_LIBRARY_MAX_RECORDS) {
         throw new LocalLibraryFullError();
       }
-      added.push(parsedToApiMovie(base));
+      added.push(parsedToApiMovie(base, source));
     }
     if (added.length === 0) return [];
     writeLocal([...all, ...added]);

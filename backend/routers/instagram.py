@@ -15,11 +15,13 @@ from backend.services.instagram_reader import (
     extract_frames,
     transcribe,
     extract_movies,
-    movieinfo_to_moviebase,
     cleanup_temp_files,
 )
-from backend.services.llm import llm_service
-from backend.services.omdb import omdb_service
+from backend.services.movie_resolver import (
+    resolve_movies,
+    search_omdb_with_fallbacks,
+)
+
 
 router = APIRouter(prefix="/api/instagram", tags=["instagram"])
 
@@ -61,36 +63,7 @@ async def _parse_reel_to_moviebases(
                 detail="В этом Reel не нашлось упоминаний фильмов",
             )
 
-        resolved: list[MovieBase] = []
-        unmatched: list[str] = []
-        seen_ids: set[str] = set()
-
-        for item in movies_info:
-            display_title = item.title_ru or item.title_en or "?"
-            candidates = await _search_omdb_with_fallbacks(
-                item.title_en or "", item.title_ru or "", seen_ids, max_per_title=1,
-            )
-            if not candidates:
-                unmatched.append(display_title)
-                continue
-
-            imdb_id = candidates[0].imdb_id
-            movie_base = await omdb_service.get_movie_by_id(imdb_id)
-            if not movie_base:
-                unmatched.append(display_title)
-                continue
-
-            if movie_base.plot:
-                try:
-                    movie_base.description = await llm_service.generate_short_description(
-                        movie_base.plot, movie_base.title,
-                    )
-                except Exception as exc:
-                    print(f"[instagram/parse] LLM description failed: {exc}")
-
-            resolved.append(movie_base)
-
-        return resolved, unmatched
+        return await resolve_movies(movies_info, log_tag="instagram/parse")
     finally:
         cleanup_targets = []
         if audio_path:
@@ -171,61 +144,6 @@ async def import_from_instagram(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-async def _search_omdb_with_fallbacks(
-    title_en: str,
-    title_ru: str,
-    seen_ids: set[str],
-    max_per_title: int = 3,
-) -> list[OMDBSearchResult]:
-    """Search OMDB trying multiple strategies until something is found."""
-    results: list[OMDBSearchResult] = []
-
-    def _collect(found: list[OMDBSearchResult]) -> bool:
-        for r in found:
-            if not r.poster_url or r.imdb_id in seen_ids:
-                continue
-            seen_ids.add(r.imdb_id)
-            results.append(r)
-            if len(results) >= max_per_title:
-                return True
-        return bool(results)
-
-    # 1) Search by title_en (movie), then title_ru (movie)
-    for query in [title_en, title_ru]:
-        if not query:
-            continue
-        print(f"[instagram/search]   trying search(movie): '{query}'")
-        if _collect(await omdb_service.search_movies(query)):
-            return results
-
-    # 2) Search without type restriction (finds series too)
-    for query in [title_en, title_ru]:
-        if not query:
-            continue
-        print(f"[instagram/search]   trying search(any type): '{query}'")
-        if _collect(await omdb_service.search_movies(query, media_type="")):
-            return results
-
-    # 3) Exact title match via ?t=
-    for query in [title_en, title_ru]:
-        if not query:
-            continue
-        print(f"[instagram/search]   trying exact match: '{query}'")
-        movie = await omdb_service.get_movie_by_title(query)
-        if movie and movie.imdb_id not in seen_ids and movie.poster_url:
-            seen_ids.add(movie.imdb_id)
-            results.append(OMDBSearchResult(
-                imdb_id=movie.imdb_id,
-                title=movie.title,
-                year=str(movie.year) if movie.year else "",
-                poster_url=movie.poster_url,
-            ))
-            return results
-
-    print(f"[instagram/search]   WARNING: nothing found for en='{title_en}' ru='{title_ru}'")
-    return results
-
-
 @router.post("/search", response_model=list[OMDBSearchResult])
 async def search_from_instagram(
     payload: InstagramImportRequest,
@@ -268,8 +186,8 @@ async def search_from_instagram(
             title_en = item.title_en or ""
             title_ru = item.title_ru or ""
             print(f"[instagram/search] searching for: en='{title_en}' ru='{title_ru}'")
-            found = await _search_omdb_with_fallbacks(
-                title_en, title_ru, seen_ids,
+            found = await search_omdb_with_fallbacks(
+                title_en, title_ru, seen_ids, log_tag="instagram/search",
             )
             print(f"[instagram/search]   → found {len(found)} results")
             results.extend(found)

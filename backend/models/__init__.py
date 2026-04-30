@@ -11,6 +11,8 @@ from backend.models.movie import (
     BulkImportRequest,
 )
 from backend.models.instagram import InstagramImportRequest
+from backend.models.telegram import TelegramImportRequest
+from backend.models.share import SharedListCreateRequest, SharedListResponse
 from backend.models.user import (
     User,
     UserCreate,
@@ -31,6 +33,9 @@ __all__ = [
     "BulkImportItem",
     "BulkImportRequest",
     "InstagramImportRequest",
+    "TelegramImportRequest",
+    "SharedListCreateRequest",
+    "SharedListResponse",
     "User",
     "UserCreate",
     "UserLogin",

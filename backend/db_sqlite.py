@@ -143,6 +143,25 @@ async def init_db():
         await db.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_imdb ON movies(user_id, imdb_id)"
         )
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS shared_lists (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT UNIQUE NOT NULL,
+                owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                name TEXT NOT NULL,
+                snapshot TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                view_count INTEGER DEFAULT 0
+            )
+        """)
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shared_lists_slug ON shared_lists(slug)"
+        )
+        await db.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shared_lists_expires "
+            "ON shared_lists(expires_at)"
+        )
         await db.commit()
 
 
@@ -483,3 +502,99 @@ async def delete_movie(movie_id: int, user_id: int) -> bool:
 async def get_unwatched_movies(user_id: int) -> list[Movie]:
     """Непросмотренные фильмы пользователя для рекомендаций."""
     return await get_all_movies(user_id=user_id, is_watched=False, in_library=True)
+
+
+# ----- shared lists --------------------------------------------------------
+
+
+async def slug_exists(slug: str) -> bool:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT 1 FROM shared_lists WHERE slug = ?", (slug,),
+        ) as cur:
+            return (await cur.fetchone()) is not None
+
+
+async def create_share(
+    slug: str,
+    owner_user_id: Optional[int],
+    name: str,
+    snapshot_json: str,
+    expires_at: Optional[datetime],
+) -> dict:
+    """Persist a snapshot of a movie list under ``slug``.
+
+    Returns the row as a dict so the router can build SharedListResponse.
+    The snapshot is opaque JSON — callers serialise on the way in and
+    deserialise on the way out.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "INSERT INTO shared_lists (slug, owner_user_id, name, snapshot, expires_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (
+                slug,
+                owner_user_id,
+                name,
+                snapshot_json,
+                expires_at.isoformat() if expires_at else None,
+            ),
+        )
+        await db.commit()
+        share_id = cursor.lastrowid
+        async with db.execute(
+            "SELECT id, slug, owner_user_id, name, snapshot, created_at, "
+            "expires_at, view_count FROM shared_lists WHERE id = ?",
+            (share_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return _row_to_share(row)
+
+
+async def get_share_by_slug(slug: str) -> Optional[dict]:
+    """Read a share. Returns None if missing or expired.
+
+    Increments view_count opportunistically — failures aren't fatal because
+    we don't want a write hiccup to break the read path.
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT id, slug, owner_user_id, name, snapshot, created_at, "
+            "expires_at, view_count FROM shared_lists WHERE slug = ?",
+            (slug,),
+        ) as cur:
+            row = await cur.fetchone()
+            if not row:
+                return None
+            share = _row_to_share(row)
+
+        if share["expires_at"] and share["expires_at"] < datetime.utcnow():
+            return None
+
+        try:
+            await db.execute(
+                "UPDATE shared_lists SET view_count = view_count + 1 WHERE slug = ?",
+                (slug,),
+            )
+            await db.commit()
+        except Exception:
+            pass
+
+        return share
+
+
+def _row_to_share(row) -> dict:
+    return {
+        "id": row[0],
+        "slug": row[1],
+        "owner_user_id": row[2],
+        "name": row[3],
+        "snapshot": row[4],
+        "created_at": (
+            datetime.fromisoformat(row[5]) if row[5] else datetime.now()
+        ),
+        "expires_at": (
+            datetime.fromisoformat(row[6]) if row[6] else None
+        ),
+        "view_count": row[7] or 0,
+    }

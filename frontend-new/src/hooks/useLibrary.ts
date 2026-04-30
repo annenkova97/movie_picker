@@ -63,6 +63,16 @@ export function useLibrary() {
     onSuccess: invalidate,
   });
 
+  const importTelegram = useMutation({
+    mutationFn: (url: string) => lib.importFromTelegram(url),
+    onSuccess: invalidate,
+  });
+
+  const absorbShared = useMutation({
+    mutationFn: (movies: ApiMovie[]) => lib.absorbShared(movies),
+    onSuccess: invalidate,
+  });
+
   return {
     isGuest,
     list,
@@ -72,6 +82,8 @@ export function useLibrary() {
     patch,
     remove,
     importInstagram,
+    importTelegram,
+    absorbShared,
   };
 }
 

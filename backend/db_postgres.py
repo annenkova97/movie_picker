@@ -90,6 +90,25 @@ async def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_imdb "
             "ON movies(user_id, imdb_id) WHERE user_id IS NOT NULL"
         )
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS shared_lists (
+                id SERIAL PRIMARY KEY,
+                slug TEXT UNIQUE NOT NULL,
+                owner_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                name TEXT NOT NULL,
+                snapshot TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                view_count INTEGER DEFAULT 0
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shared_lists_slug ON shared_lists(slug)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_shared_lists_expires "
+            "ON shared_lists(expires_at)"
+        )
 
 
 def _row_to_movie(row) -> Movie:
@@ -417,3 +436,76 @@ async def delete_movie(movie_id: int, user_id: int) -> bool:
 
 async def get_unwatched_movies(user_id: int) -> list[Movie]:
     return await get_all_movies(user_id=user_id, is_watched=False, in_library=True)
+
+
+# ── shared lists ─────────────────────────────────────────────────────────────
+
+
+async def slug_exists(slug: str) -> bool:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT 1 FROM shared_lists WHERE slug = $1", slug,
+        )
+        return row is not None
+
+
+async def create_share(
+    slug: str,
+    owner_user_id: Optional[int],
+    name: str,
+    snapshot_json: str,
+    expires_at: Optional[datetime],
+) -> dict:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO shared_lists (slug, owner_user_id, name, snapshot, expires_at)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, slug, owner_user_id, name, snapshot, created_at,
+                      expires_at, view_count
+            """,
+            slug, owner_user_id, name, snapshot_json, expires_at,
+        )
+        return _row_to_share(row)
+
+
+async def get_share_by_slug(slug: str) -> Optional[dict]:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT id, slug, owner_user_id, name, snapshot, created_at, "
+            "expires_at, view_count FROM shared_lists WHERE slug = $1",
+            slug,
+        )
+        if not row:
+            return None
+        share = _row_to_share(row)
+
+        if share["expires_at"] and share["expires_at"] < datetime.utcnow():
+            return None
+
+        try:
+            await conn.execute(
+                "UPDATE shared_lists SET view_count = view_count + 1 WHERE slug = $1",
+                slug,
+            )
+        except Exception:
+            pass
+
+        return share
+
+
+def _row_to_share(row) -> dict:
+    return {
+        "id": row[0],
+        "slug": row[1],
+        "owner_user_id": row[2],
+        "name": row[3],
+        "snapshot": row[4],
+        "created_at": row[5] if isinstance(row[5], datetime) else (
+            datetime.fromisoformat(str(row[5])) if row[5] else datetime.now()
+        ),
+        "expires_at": row[6] if (row[6] is None or isinstance(row[6], datetime)) else (
+            datetime.fromisoformat(str(row[6])) if row[6] else None
+        ),
+        "view_count": row[7] or 0,
+    }

@@ -5,8 +5,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
+from backend import config
 from backend import database as db
-from backend.routers import movies, search, recommend, instagram, awards, auth
+from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares
 from backend.services.awards_seed import sync_awards_catalog
 
 
@@ -18,14 +19,17 @@ async def lifespan(app: FastAPI):
     os.makedirs(data_dir, exist_ok=True)
 
     # Инициализируем базу данных
+    engine = "PostgreSQL" if config.USE_POSTGRES else f"SQLite ({config.DATABASE_PATH})"
+    print(f"[db] Using {engine}", flush=True)
     await db.init_db()
-    print("База данных инициализирована")
+    print("[db] init_db OK", flush=True)
 
-    # Догружаем каталог наград (идемпотентно)
-    try:
-        await sync_awards_catalog()
-    except Exception as exc:
-        print(f"Не удалось синхронизировать каталог наград: {exc}")
+    # Догружаем каталог наград (идемпотентно). SKIP_AWARDS_SEED=1 — для тестов.
+    if os.getenv("SKIP_AWARDS_SEED") != "1":
+        try:
+            await sync_awards_catalog()
+        except Exception as exc:
+            print(f"Не удалось синхронизировать каталог наград: {exc}")
 
     yield
 
@@ -55,7 +59,10 @@ app.include_router(movies.router)
 app.include_router(search.router)
 app.include_router(recommend.router)
 app.include_router(instagram.router)
+app.include_router(telegram.router)
 app.include_router(awards.router)
+app.include_router(shares.router)
+app.include_router(health.router)
 
 # Статические файлы frontend (собранный Vite-бандл)
 frontend_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
@@ -88,7 +95,3 @@ async def root():
     return {"message": "Movie Picker API", "docs": "/docs"}
 
 
-@app.get("/api/health")
-async def health_check():
-    """Проверка работоспособности API"""
-    return {"status": "ok"}

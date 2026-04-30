@@ -27,12 +27,13 @@ interface Props {
   onMovieClick: (m: UiMovie) => void;
   onToggleWatched: (m: UiMovie) => void;
   onSaveAward: (m: UiMovie, watched: boolean) => void;
+  onShareClick: () => void;
 }
 
 export function Home(props: Props) {
   const {
     th, lang, movies, awards, loading, loadingAwards, adding, picking,
-    addError, savingAwardId, onAdd, onPick, onMovieClick, onToggleWatched, onSaveAward,
+    addError, savingAwardId, onAdd, onPick, onMovieClick, onToggleWatched, onSaveAward, onShareClick,
   } = props;
   const [tab, setTab] = useState<Tab>('toWatch');
   const [friendMode, setFriendMode] = useState(false);
@@ -84,6 +85,15 @@ export function Home(props: Props) {
           <Tab label={T.awardsTab[lang]} count={awardsCount} active={tab === 'awards'} onClick={() => { setTab('awards'); setFriendMode(false); }} th={th} />
           <Tab label={T.watched[lang]} count={watchedCount} active={tab === 'watched'} onClick={() => { setTab('watched'); setFriendMode(false); }} th={th} />
           <div style={{ flex: 1 }} />
+          {savedCount + watchedCount > 0 && (
+            <button onClick={onShareClick} style={{
+              border: `1px solid ${th.line}`, background: 'transparent',
+              color: th.ink2,
+              padding: '6px 12px', borderRadius: 999, fontSize: 12, cursor: 'pointer', fontWeight: 500,
+              marginBottom: 8, marginRight: 4,
+              fontFamily: 'inherit',
+            }}>↗ {T.shareButton[lang]}</button>
+          )}
           {tab === 'watched' && watchedCount > 0 && (
             <button onClick={() => setFriendMode(!friendMode)} style={{
               border: `1px solid ${th.line}`, background: friendMode ? th.plum : 'transparent',

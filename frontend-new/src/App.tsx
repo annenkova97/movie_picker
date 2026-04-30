@@ -9,6 +9,8 @@ import { GuestSignupSheet } from './components/GuestSignupSheet';
 import { Home } from './components/Home';
 import { MovieDetail } from './components/MovieDetail';
 import { PickReveal } from './components/PickReveal';
+import { ShareModal } from './components/ShareModal';
+import { SharedListView } from './components/SharedListView';
 import { TopBar } from './components/TopBar';
 import type { Lang } from './i18n';
 import { T } from './i18n';
@@ -23,11 +25,19 @@ function usePersistent<T extends string>(key: string, fallback: T): [T, (v: T) =
   return [v, setV];
 }
 
+function readShareSlug(): string | null {
+  // No router yet — keep it dead simple. Path /s/<slug> renders the share view.
+  const path = window.location.pathname;
+  const match = path.match(/^\/s\/([\w-]+)\/?$/);
+  return match ? match[1] : null;
+}
+
 export default function App() {
   const [lang, setLang] = usePersistent<Lang>('lentochka.lang', 'en');
   const [themeName, setThemeName] = usePersistent<ThemeName>('lentochka.theme', 'light');
   const th = THEMES[themeName];
   const auth = useAuth();
+  const shareSlug = readShareSlug();
 
   useEffect(() => {
     document.body.style.background = th.bg;
@@ -42,6 +52,10 @@ export default function App() {
         {T.authLoading[lang]}
       </div>
     );
+  }
+
+  if (shareSlug) {
+    return <SharedListView th={th} lang={lang} slug={shareSlug} />;
   }
 
   return <AppInner th={th} lang={lang} setLang={setLang} themeName={themeName} setThemeName={setThemeName} />;
@@ -103,6 +117,7 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
 
   const [addError, setAddError] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
   const guestPrompt = useGuestSignupPrompt(uiMovies.length, lib.isGuest);
 
   const [pick, setPick] = useState<{ movie: UiMovie | null; mood: string; explanation: string }>(
@@ -142,6 +157,8 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
     try {
       if (rec === 'instagram') {
         await lib.importInstagram.mutateAsync(query);
+      } else if (rec === 'telegram') {
+        await lib.importTelegram.mutateAsync(query);
       } else {
         await lib.addByQuery.mutateAsync(query);
       }
@@ -158,7 +175,7 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
     lib.patch.mutate({ id: m.id, fields: { is_watched: !m.watched } });
   };
 
-  const adding = lib.importInstagram.isPending || lib.addByQuery.isPending;
+  const adding = lib.importInstagram.isPending || lib.importTelegram.isPending || lib.addByQuery.isPending;
   const savingAwardId = lib.saveAward.isPending ? (lib.saveAward.variables?.movie.id ?? null) : null;
   const detailSaving = lib.saveAward.isPending || lib.patch.isPending || lib.remove.isPending;
 
@@ -205,6 +222,7 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
         onMovieClick={handleMovieClick}
         onToggleWatched={handleToggleWatched}
         onSaveAward={handleSaveAward}
+        onShareClick={() => setShareOpen(true)}
       />
       <PickReveal
         th={th}
@@ -255,6 +273,17 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
           lang={lang}
           initialMode={authMode}
           onClose={() => setAuthMode(null)}
+        />
+      )}
+
+      {shareOpen && (
+        <ShareModal
+          th={th}
+          lang={lang}
+          ownerName={auth.user?.name ?? null}
+          isGuest={lib.isGuest}
+          library={moviesQuery.data ?? []}
+          onClose={() => setShareOpen(false)}
         />
       )}
     </>

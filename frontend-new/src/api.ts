@@ -109,6 +109,28 @@ export function importFromInstagramParse(url: string): Promise<ParsedMovieBase[]
   });
 }
 
+/**
+ * Authenticated: parse a public Telegram post (t.me/<channel>/<id>) and add
+ * mentioned movies to the user's library.
+ */
+export function importFromTelegram(url: string): Promise<ApiMovie[]> {
+  return http('/api/telegram/import', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+}
+
+/**
+ * Public: parses a Telegram post and returns matched MovieBase records (no
+ * DB id, no watched flag). Mirrors `importFromInstagramParse` for guest mode.
+ */
+export function importFromTelegramParse(url: string): Promise<ParsedMovieBase[]> {
+  return http('/api/telegram/parse', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+}
+
 export function patchMovie(id: number, body: { is_watched?: boolean }): Promise<ApiMovie> {
   return http(`/api/movies/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
@@ -162,4 +184,29 @@ export function bulkImportMovies(items: BulkImportItem[]): Promise<ApiMovie[]> {
     method: 'POST',
     body: JSON.stringify({ items }),
   });
+}
+
+export interface SharedListPayload {
+  slug: string;
+  name: string;
+  owner_name: string | null;
+  created_at: string;
+  movies: ApiMovie[];
+}
+
+/**
+ * Create a public share link.
+ *
+ * Authenticated callers omit `library` — the backend snapshots whatever is
+ * currently in their DB. Guests pass their localStorage library inline.
+ */
+export function createShare(name: string, library?: ApiMovie[]): Promise<SharedListPayload> {
+  return http('/api/shares', {
+    method: 'POST',
+    body: JSON.stringify(library === undefined ? { name } : { name, library }),
+  });
+}
+
+export function getShare(slug: string): Promise<SharedListPayload> {
+  return http(`/api/shares/${encodeURIComponent(slug)}`);
 }
