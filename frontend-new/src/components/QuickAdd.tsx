@@ -301,6 +301,13 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
         background: th.bgAlt,
       }}>
         <div style={{
+          fontSize: 11, fontFamily: 'ui-monospace,monospace',
+          color: th.ink3, textTransform: 'uppercase', letterSpacing: 1.2,
+          textAlign: 'center',
+        }}>
+          ✦ {T.quickAddCta[lang]}
+        </div>
+        <div style={{
           display: 'flex', gap: 8, alignItems: 'stretch',
           background: th.surface, border: `1px solid ${th.line}`,
           borderRadius: 12, padding: 4, boxShadow: th.shadow,

@@ -16,6 +16,7 @@ export const T = {
   quickAddPh:  { ru: 'вставь ссылку или название фильма…', en: 'paste a link or film title…' } as Pair,
   save:        { ru: 'Сохранить',                     en: 'Save' } as Pair,
   find:        { ru: 'Найти',                         en: 'Find' } as Pair,
+  quickAddCta: { ru: 'Найти и сохранить',             en: 'Find and save for later' } as Pair,
 
   statusOpenReels:  { ru: 'открываю Reels',            en: 'opening Reels' } as Pair,
   statusListen:     { ru: 'слушаю аудио',              en: 'listening to audio' } as Pair,
