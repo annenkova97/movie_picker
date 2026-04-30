@@ -14,8 +14,8 @@
 - [x] **CORS прибить к конкретным origins** — список через env-переменную `CORS_ALLOW_ORIGINS` (запятая как разделитель). На Railway надо проставить URL фронта.
 - [x] **JWT_SECRET без дефолта** — старт фейлится, если переменная не задана.
 - [x] **Password policy** — `min_length` поднят до 8.
-- [ ] **Rate-limit на auth** — `slowapi` на `/auth/login`, `/auth/register`, `/auth/google` (анти-брутфорс).
-- [ ] **Rate-limit на платные API** — `/api/recommend`, `/api/instagram/*`, `/api/search` (за ними OMDB / Claude / OpenAI).
+- [x] **Rate-limit на auth** — `slowapi`: `/auth/login` 10/мин, `/auth/register` 5/час, `/auth/google` 20/мин (по IP).
+- [x] **Rate-limit на платные API** — per-user (fallback на IP): `/api/recommend` 30/час, `/api/instagram/*` 10/час, `/api/search` + `/api/search/preview` 60/мин.
 
 ## Деньги
 

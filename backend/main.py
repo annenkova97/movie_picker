@@ -5,8 +5,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+
 from backend import database as db
 from backend.config import CORS_ALLOW_ORIGINS
+from backend.rate_limit import limiter
 from backend.routers import movies, search, recommend, instagram, awards, auth
 from backend.services.awards_seed import sync_awards_catalog
 
@@ -40,6 +45,10 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

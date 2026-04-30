@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from backend import database as db
 from backend.auth import (
@@ -16,6 +16,7 @@ from backend.models import (
     UserCreate,
     UserLogin,
 )
+from backend.rate_limit import limiter
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -28,7 +29,8 @@ async def _issue(user_row: dict) -> AuthResponse:
 
 
 @router.post("/register", response_model=AuthResponse)
-async def register(payload: UserCreate):
+@limiter.limit("5/hour")
+async def register(request: Request, payload: UserCreate):
     existing = await db.get_user_by_email(payload.email)
     if existing:
         raise HTTPException(
@@ -44,7 +46,8 @@ async def register(payload: UserCreate):
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(payload: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, payload: UserLogin):
     user_row = await db.get_user_by_email(payload.email)
     if not user_row or not user_row["password_hash"]:
         raise HTTPException(
@@ -60,7 +63,8 @@ async def login(payload: UserLogin):
 
 
 @router.post("/google", response_model=AuthResponse)
-async def google_login(payload: GoogleLogin):
+@limiter.limit("20/minute")
+async def google_login(request: Request, payload: GoogleLogin):
     claims = verify_google_id_token(payload.id_token)
     google_sub = claims["sub"]
     email = claims.get("email", "").lower()
