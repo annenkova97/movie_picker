@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addMovie, deleteMovie, importFromInstagram, listAwards, listMovies, patchMovie, recommend, saveToLibrary } from './api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { listAwards, recommend } from './api';
 import { useAuth } from './auth';
+import { useGuestSignupPrompt, useLibrary } from './hooks/useLibrary';
+import { migrateGuestLibrary } from './library';
 import { AuthScreen } from './components/AuthScreen';
+import { GuestSignupSheet } from './components/GuestSignupSheet';
 import { Home } from './components/Home';
 import { MovieDetail } from './components/MovieDetail';
 import { PickReveal } from './components/PickReveal';
@@ -10,7 +13,7 @@ import { TopBar } from './components/TopBar';
 import type { Lang } from './i18n';
 import { T } from './i18n';
 import { THEMES, type Theme, type ThemeName } from './theme';
-import { toUiMovie, type RecSource, type UiMovie } from './types';
+import { toUiMovie, type ApiMovie, type RecSource, type UiMovie } from './types';
 
 function usePersistent<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
   const [v, setV] = useState<T>(() => {
@@ -21,7 +24,7 @@ function usePersistent<T extends string>(key: string, fallback: T): [T, (v: T) =
 }
 
 export default function App() {
-  const [lang, setLang] = usePersistent<Lang>('lentochka.lang', 'ru');
+  const [lang, setLang] = usePersistent<Lang>('lentochka.lang', 'en');
   const [themeName, setThemeName] = usePersistent<ThemeName>('lentochka.theme', 'light');
   const th = THEMES[themeName];
   const auth = useAuth();
@@ -41,10 +44,6 @@ export default function App() {
     );
   }
 
-  if (!auth.user) {
-    return <AuthScreen th={th} lang={lang} />;
-  }
-
   return <AppInner th={th} lang={lang} setLang={setLang} themeName={themeName} setThemeName={setThemeName} />;
 }
 
@@ -59,33 +58,39 @@ interface AppInnerProps {
 function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps) {
   const qc = useQueryClient();
   const auth = useAuth();
-  const userId = auth.user?.id;
+  const lib = useLibrary();
 
-  const moviesQuery = useQuery({
-    queryKey: ['movies', userId],
-    queryFn: listMovies,
-    enabled: userId != null,
-  });
+  // After a successful login/register, drain any guest data the user accrued
+  // before signing in. Idempotent: if there's nothing local, the call is a
+  // no-op. We invalidate library cache on success so the freshly imported
+  // movies appear without a manual reload.
+  useEffect(() => {
+    if (!auth.user) return;
+    let cancelled = false;
+    migrateGuestLibrary()
+      .then((count) => {
+        if (cancelled) return;
+        if (count > 0) qc.invalidateQueries({ queryKey: ['library'] });
+      })
+      .catch((err) => console.warn('[migrate] guest library migration failed:', err));
+    return () => { cancelled = true; };
+  }, [auth.user?.id, qc]);
 
   const awardsQuery = useQuery({
     queryKey: ['awards'],
     queryFn: () => listAwards(),
   });
 
+  const moviesQuery = lib.list;
+
   const uiMovies = useMemo<UiMovie[]>(
     () => (moviesQuery.data ?? []).map(toUiMovie),
     [moviesQuery.data],
   );
 
-  const libraryIds = useMemo(
-    () => new Set(uiMovies.map((m) => m.imdbId)),
-    [uiMovies],
-  );
-
   const uiAwards = useMemo<UiMovie[]>(
     () => (awardsQuery.data ?? []).map((m) => {
       const ui = toUiMovie(m);
-      // если фильм уже в библиотеке пользователя — отмечаем и копируем статус просмотра
       const libraryMovie = uiMovies.find((lm) => lm.imdbId === ui.imdbId);
       if (libraryMovie) {
         ui.inLibrary = true;
@@ -97,45 +102,21 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
   );
 
   const [addError, setAddError] = useState<string | null>(null);
-  const addMut = useMutation({
-    mutationFn: async ({ query, rec }: { query: string; rec: RecSource }) => {
-      if (rec === 'instagram') {
-        const movies = await importFromInstagram(query);
-        return movies[0];
-      }
-      return addMovie(query);
-    },
-    onMutate: () => setAddError(null),
-    onError: (e: unknown) => setAddError(e instanceof Error ? e.message : String(e)),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['movies'] }),
-  });
+  const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const guestPrompt = useGuestSignupPrompt(uiMovies.length, lib.isGuest);
 
-  const toggleMut = useMutation({
-    mutationFn: ({ id, watched }: { id: number; watched: boolean }) => patchMovie(id, { is_watched: watched }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['movies'] }),
-  });
-
-  const removeMut = useMutation({
-    mutationFn: (id: number) => deleteMovie(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['movies'] }),
-  });
-
-  const saveAwardMut = useMutation({
-    mutationFn: ({ id, watched }: { id: number; watched: boolean }) => saveToLibrary(id, watched),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['movies'] });
-      qc.invalidateQueries({ queryKey: ['awards'] });
-    },
-  });
-
-  const [pick, setPick] = useState<{ movie: UiMovie | null; mood: string; explanation: string }>({ movie: null, mood: '', explanation: '' });
+  const [pick, setPick] = useState<{ movie: UiMovie | null; mood: string; explanation: string }>(
+    { movie: null, mood: '', explanation: '' }
+  );
   const [detail, setDetail] = useState<UiMovie | null>(null);
   const [picking, setPicking] = useState(false);
 
   const handlePick = async (mood: string) => {
     setPicking(true);
     try {
-      const res = await recommend(mood, false);
+      // For guest, send the local library inline so the recommender has context.
+      const inlineLibrary = lib.isGuest ? (moviesQuery.data ?? []) : undefined;
+      const res = await recommend(mood, false, inlineLibrary);
       const first = res.movies[0];
       if (first) {
         const ui = toUiMovie(first);
@@ -151,12 +132,22 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
   };
 
   const handleAdd = async (query: string, rec: RecSource) => {
-    // 'tt:' prefix means QuickAdd already saved the movie via addMovieByImdbId — just refresh
+    // 'tt:' prefix means QuickAdd already saved the movie via lib.save.mutate —
+    // just refresh.
     if (query.startsWith('tt:')) {
-      qc.invalidateQueries({ queryKey: ['movies'] });
+      qc.invalidateQueries({ queryKey: ['library'] });
       return;
     }
-    await addMut.mutateAsync({ query, rec });
+    setAddError(null);
+    try {
+      if (rec === 'instagram') {
+        await lib.importInstagram.mutateAsync(query);
+      } else {
+        await lib.addByQuery.mutateAsync(query);
+      }
+    } catch (e) {
+      setAddError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   const handleMovieClick = (m: UiMovie) => {
@@ -164,12 +155,40 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
   };
 
   const handleToggleWatched = (m: UiMovie) => {
-    toggleMut.mutate({ id: m.id, watched: !m.watched });
+    lib.patch.mutate({ id: m.id, fields: { is_watched: !m.watched } });
+  };
+
+  const adding = lib.importInstagram.isPending || lib.addByQuery.isPending;
+  const savingAwardId = lib.saveAward.isPending ? (lib.saveAward.variables?.movie.id ?? null) : null;
+  const detailSaving = lib.saveAward.isPending || lib.patch.isPending || lib.remove.isPending;
+
+  // Components hand us UiMovie (the rendering view) but lib.saveAward needs the
+  // backend ApiMovie shape with full metadata + numeric id. Look up the source
+  // record by imdb_id from the most recent fetched data.
+  const findApiMovie = (imdbId: string): ApiMovie | undefined => {
+    return moviesQuery.data?.find((m) => m.imdb_id === imdbId)
+      ?? awardsQuery.data?.find((m) => m.imdb_id === imdbId);
+  };
+
+  const handleSaveAward = (m: UiMovie, watched: boolean) => {
+    const api = findApiMovie(m.imdbId);
+    if (!api) {
+      console.warn('[saveAward] no ApiMovie for', m.imdbId);
+      return;
+    }
+    lib.saveAward.mutate({ movie: api, watched });
   };
 
   return (
     <>
-      <TopBar th={th} lang={lang} setLang={setLang} theme={themeName} setTheme={setThemeName} />
+      <TopBar
+        th={th}
+        lang={lang}
+        setLang={setLang}
+        theme={themeName}
+        setTheme={setThemeName}
+        onSignInClick={lib.isGuest ? () => setAuthMode('login') : undefined}
+      />
       <Home
         th={th}
         lang={lang}
@@ -177,15 +196,15 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
         awards={uiAwards}
         loading={moviesQuery.isLoading}
         loadingAwards={awardsQuery.isLoading}
-        adding={addMut.isPending}
+        adding={adding}
         picking={picking}
         addError={addError}
-        savingAwardId={saveAwardMut.isPending ? (saveAwardMut.variables?.id ?? null) : null}
+        savingAwardId={savingAwardId}
         onAdd={handleAdd}
         onPick={handlePick}
         onMovieClick={handleMovieClick}
         onToggleWatched={handleToggleWatched}
-        onSaveAward={(m, watched) => saveAwardMut.mutate({ id: m.id, watched })}
+        onSaveAward={handleSaveAward}
       />
       <PickReveal
         th={th}
@@ -200,14 +219,14 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
         th={th}
         lang={lang}
         movie={detail}
-        saving={saveAwardMut.isPending || toggleMut.isPending || removeMut.isPending}
+        saving={detailSaving}
         onClose={() => setDetail(null)}
         onSaveToWatch={(m) => {
-          saveAwardMut.mutate({ id: m.id, watched: false });
+          handleSaveAward(m, false);
           setDetail(null);
         }}
         onSaveAsWatched={(m) => {
-          saveAwardMut.mutate({ id: m.id, watched: true });
+          handleSaveAward(m, true);
           setDetail(null);
         }}
         onToggleWatched={(m) => {
@@ -215,10 +234,29 @@ function AppInner({ th, lang, setLang, themeName, setThemeName }: AppInnerProps)
           setDetail(null);
         }}
         onRemove={(m) => {
-          removeMut.mutate(m.id);
+          lib.remove.mutate(m.id);
           setDetail(null);
         }}
       />
+
+      {guestPrompt.open && (
+        <GuestSignupSheet
+          th={th}
+          lang={lang}
+          onCreate={() => { guestPrompt.dismiss(); setAuthMode('register'); }}
+          onSignIn={() => { guestPrompt.dismiss(); setAuthMode('login'); }}
+          onSkip={() => guestPrompt.dismiss()}
+        />
+      )}
+
+      {authMode && (
+        <AuthScreen
+          th={th}
+          lang={lang}
+          initialMode={authMode}
+          onClose={() => setAuthMode(null)}
+        />
+      )}
     </>
   );
 }

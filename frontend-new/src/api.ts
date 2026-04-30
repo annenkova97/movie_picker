@@ -81,6 +81,34 @@ export function importFromInstagram(url: string): Promise<ApiMovie[]> {
   });
 }
 
+/**
+ * Public: parses an Instagram Reel and returns matched movies as MovieBase
+ * records (no DB id, no watched flag). Used by the guest library to populate
+ * localStorage without an account.
+ */
+export interface ParsedMovieBase {
+  imdb_id: string;
+  title: string;
+  original_title: string | null;
+  year: number | null;
+  genres: string[];
+  description: string | null;
+  plot: string | null;
+  plot_ru: string | null;
+  cast: string[];
+  director: string | null;
+  poster_url: string | null;
+  imdb_rating: number | null;
+  awards: string | null;
+}
+
+export function importFromInstagramParse(url: string): Promise<ParsedMovieBase[]> {
+  return http('/api/instagram/parse', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  });
+}
+
 export function patchMovie(id: number, body: { is_watched?: boolean }): Promise<ApiMovie> {
   return http(`/api/movies/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
@@ -94,9 +122,44 @@ export interface RecommendResult {
   explanation: string;
 }
 
-export function recommend(query: string, includeWatched = false): Promise<RecommendResult> {
+/**
+ * Recommend.
+ *
+ * If `library` is provided, it is sent inline and the backend uses it as
+ * context (no auth required — used in guest mode). Otherwise the backend
+ * pulls the authenticated user's library from the DB.
+ */
+export function recommend(
+  query: string,
+  includeWatched = false,
+  library?: ApiMovie[],
+): Promise<RecommendResult> {
   return http('/api/recommend', {
     method: 'POST',
-    body: JSON.stringify({ query, include_watched: includeWatched }),
+    body: JSON.stringify({
+      query,
+      include_watched: includeWatched,
+      ...(library !== undefined ? { library } : {}),
+    }),
+  });
+}
+
+export interface BulkImportItem {
+  imdb_id: string;
+  is_watched: boolean;
+  rec_source: string | null;
+  rec_note: string | null;
+  source: string;
+}
+
+/**
+ * Migrates the local guest library into the authenticated user's account.
+ * Backend is idempotent on (user_id, imdb_id) — duplicates are merged, not
+ * doubled.
+ */
+export function bulkImportMovies(items: BulkImportItem[]): Promise<ApiMovie[]> {
+  return http('/api/movies/bulk-import', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
   });
 }

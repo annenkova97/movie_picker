@@ -126,9 +126,7 @@ export function MovieDetail({ th, lang, movie, saving, onClose, onSaveToWatch, o
           {movie.inLibrary && onRemove && (
             <button
               onClick={() => {
-                const msg = lang === 'ru'
-                  ? `Удалить «${movie.title}» из списка?`
-                  : `Remove "${movie.title}" from your list?`;
+                const msg = `${T.removeConfirmPrefix[lang]}${movie.title}${T.removeConfirmSuffix[lang]}`;
                 if (window.confirm(msg)) onRemove(movie);
               }}
               disabled={saving}

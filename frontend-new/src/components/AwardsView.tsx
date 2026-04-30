@@ -44,7 +44,7 @@ export function AwardsView({ th, lang, movies, loading, savingId, onSave, onOpen
   return (
     <div style={{ padding: '0 40px 40px', display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <FilterChip active={filter === null} onClick={() => setFilter(null)} th={th} label={lang === 'ru' ? 'Все' : 'All'} />
+        <FilterChip active={filter === null} onClick={() => setFilter(null)} th={th} label={T.awardsAll[lang]} />
         {awards.map((a) => (
           <FilterChip key={a} active={filter === a} onClick={() => setFilter(a)} th={th} label={a} />
         ))}
@@ -108,8 +108,8 @@ function AwardCard({ m, th, lang, saving, onSave, onOpen }: { m: UiMovie; th: Th
           color: m.watched ? '#2d6b3e' : th.plum,
         }}>
           {m.watched
-            ? `✓ ${lang === 'ru' ? 'Уже смотрел' : 'Watched'}`
-            : `♥ ${lang === 'ru' ? 'В очереди' : 'In watchlist'}`}
+            ? `✓ ${T.awardsWatched[lang]}`
+            : `♥ ${T.awardsInQueue[lang]}`}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }} onClick={stop}>
@@ -132,7 +132,7 @@ function AwardCard({ m, th, lang, saving, onSave, onOpen }: { m: UiMovie; th: Th
               fontSize: 12.5, fontWeight: 500, width: '100%',
               opacity: saving ? 0.7 : 1,
             }}
-          >{`✓ ${lang === 'ru' ? 'Уже смотрел' : 'Already watched'}`}</button>
+          >{`✓ ${T.quickAlreadyWatched[lang]}`}</button>
         </div>
       )}
     </div>

@@ -3,8 +3,9 @@ import type { Lang } from '../i18n';
 import { T } from '../i18n';
 import type { Theme } from '../theme';
 import type { RecSource } from '../types';
-import { searchMovies, addMovieByImdbId, getMoviePreview, patchMovie } from '../api';
+import { searchMovies, getMoviePreview } from '../api';
 import type { SearchResult, MoviePreview } from '../api';
+import { useLibrary } from '../hooks/useLibrary';
 
 interface Props {
   th: Theme;
@@ -68,13 +69,13 @@ function PreviewPanel({ th, lang, imdbId, onSaveWatch, onSaveWatched, onClose, s
             border: `2px solid ${th.plum}`, borderTopColor: 'transparent',
             animation: 'qa-spin 0.8s linear infinite', verticalAlign: 'middle', marginRight: 8,
           }} />
-          {lang === 'ru' ? 'Загружаем детали…' : 'Loading details…'}
+          {T.quickLoadingDetails[lang]}
         </div>
       )}
 
       {err && (
         <div style={{ padding: '12px 16px', fontSize: 12, color: '#b4442e' }}>
-          {lang === 'ru' ? 'Не удалось загрузить детали' : 'Could not load details'}
+          {T.quickLoadFail[lang]}
         </div>
       )}
 
@@ -119,7 +120,7 @@ function PreviewPanel({ th, lang, imdbId, onSaveWatch, onSaveWatched, onClose, s
             {/* Director */}
             {preview.director && (
               <div style={{ fontSize: 12, color: th.ink3, marginBottom: 6 }}>
-                {lang === 'ru' ? 'Реж.: ' : 'Dir.: '}
+                {T.quickDirectorPrefix[lang]}
                 <span style={{ color: th.ink2, fontWeight: 500 }}>{preview.director}</span>
               </div>
             )}
@@ -165,7 +166,7 @@ function PreviewPanel({ th, lang, imdbId, onSaveWatch, onSaveWatched, onClose, s
                   cursor: saving ? 'wait' : 'pointer', opacity: saving ? 0.7 : 1,
                 }}
               >
-                ✓ {lang === 'ru' ? 'Уже смотрел' : 'Already watched'}
+                ✓ {T.quickAlreadyWatched[lang]}
               </button>
               <button
                 onClick={onClose}
@@ -175,7 +176,7 @@ function PreviewPanel({ th, lang, imdbId, onSaveWatch, onSaveWatched, onClose, s
                   padding: '8px 6px', fontSize: 12, cursor: 'pointer',
                 }}
               >
-                {lang === 'ru' ? 'Закрыть' : 'Close'}
+                {T.quickClose[lang]}
               </button>
             </div>
           </div>
@@ -188,6 +189,7 @@ function PreviewPanel({ th, lang, imdbId, onSaveWatch, onSaveWatched, onClose, s
 // ── Main QuickAdd ─────────────────────────────────────────────────────────────
 
 export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
+  const lib = useLibrary();
   const [v, setV] = useState('');
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -222,14 +224,12 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
     try {
       const found = await searchMovies(q);
       if (found.length === 0) {
-        setSearchError(lang === 'ru'
-          ? 'Ничего не нашли. Попробуй уточнить название.'
-          : 'Nothing found. Try a different title.');
+        setSearchError(T.quickNothingFound[lang]);
       } else {
         setResults(found);
       }
     } catch (e: any) {
-      setSearchError(e?.message || (lang === 'ru' ? 'Ошибка поиска' : 'Search error'));
+      setSearchError(e?.message || T.quickSearchError[lang]);
     } finally {
       setSearching(false);
     }
@@ -240,13 +240,14 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
     e.stopPropagation();
     setSaving(r.imdb_id);
     try {
-      await addMovieByImdbId(r.imdb_id);
+      await lib.save.mutateAsync({ imdbId: r.imdb_id, watched: false });
+      // notify App to refresh + clear UI
       await onAdd(`tt:${r.imdb_id}`, 'personal');
       setResults(null);
       setV('');
       setExpandedId(null);
     } catch (err: any) {
-      setSearchError(err?.message || (lang === 'ru' ? 'Не удалось сохранить' : 'Could not save'));
+      setSearchError(err?.message || T.quickSaveError[lang]);
     } finally {
       setSaving(null);
     }
@@ -256,16 +257,13 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
   const handlePreviewSave = async (imdbId: string, watched: boolean) => {
     setSaving(imdbId);
     try {
-      const saved = await addMovieByImdbId(imdbId);
-      if (watched && saved?.id) {
-        await patchMovie(saved.id, { is_watched: true });
-      }
+      await lib.save.mutateAsync({ imdbId, watched });
       await onAdd(`tt:${imdbId}`, 'personal');
       setResults(null);
       setV('');
       setExpandedId(null);
     } catch (err: any) {
-      setSearchError(err?.message || (lang === 'ru' ? 'Не удалось сохранить' : 'Could not save'));
+      setSearchError(err?.message || T.quickSaveError[lang]);
     } finally {
       setSaving(null);
     }
@@ -281,6 +279,12 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
   };
 
   const isLoading = loading || searching;
+
+  const resultsHint = results && (
+    results.length === 1
+      ? T.quickResultsHintOne[lang]
+      : T.quickResultsHintMany[lang].replace('%n', String(results.length))
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -332,7 +336,7 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
                 animation: 'qa-spin 0.8s linear infinite', display: 'inline-block',
               }} />
             )}
-            {results ? (lang === 'ru' ? 'Искать снова' : 'Search again') : T.find[lang]}
+            {results ? T.quickSearchAgain[lang] : T.find[lang]}
           </button>
         </div>
         <div style={{
@@ -353,9 +357,7 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
             fontSize: 10.5, fontFamily: 'ui-monospace,monospace', color: th.ink3,
             textTransform: 'uppercase', letterSpacing: 1.1, marginBottom: 2,
           }}>
-            {lang === 'ru'
-              ? `Нашли ${results.length} вариант${results.length === 1 ? '' : 'а'} — нажми чтобы узнать подробности:`
-              : `Found ${results.length} — tap for details:`}
+            {resultsHint}
           </div>
 
           {results.map((r) => {
@@ -391,7 +393,7 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
                       {r.year}
                       {!isExpanded && (
                         <span style={{ marginLeft: 6, color: th.plum, fontSize: 10, fontWeight: 600 }}>
-                          {lang === 'ru' ? '▾ подробнее' : '▾ details'}
+                          {T.quickDetailsToggle[lang]}
                         </span>
                       )}
                     </div>
@@ -400,7 +402,7 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
                   <button
                     onClick={(e) => handleQuickSave(r, e)}
                     disabled={!!saving}
-                    title={lang === 'ru' ? 'Быстро добавить в список' : 'Quick add to watchlist'}
+                    title={T.quickAddTooltip[lang]}
                     style={{
                       border: 'none', background: th.plum, color: th.plumInk,
                       padding: '7px 14px', borderRadius: 8,
@@ -416,7 +418,7 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
                         animation: 'qa-spin 0.8s linear infinite', display: 'inline-block',
                       }} />
                     )}
-                    {lang === 'ru' ? '+ Сохранить' : '+ Save'}
+                    {T.quickAddToList[lang]}
                   </button>
                 </div>
 
@@ -443,7 +445,7 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
               fontSize: 12, cursor: 'pointer', padding: '4px 0', textAlign: 'left',
               fontFamily: 'ui-monospace,monospace',
             }}
-          >✕ {lang === 'ru' ? 'Отмена' : 'Cancel'}</button>
+          >{T.quickCancel[lang]}</button>
         </div>
       )}
 

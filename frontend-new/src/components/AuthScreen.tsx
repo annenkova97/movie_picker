@@ -2,34 +2,26 @@ import { useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../auth';
 import type { Lang } from '../i18n';
+import { T } from '../i18n';
 import type { Theme } from '../theme';
-
-const L = {
-  titleLogin:    { ru: 'Войти в Ленточку',       en: 'Sign in to Lentochka' },
-  titleRegister: { ru: 'Создать аккаунт',          en: 'Create an account' },
-  emailPh:       { ru: 'Email',                    en: 'Email' },
-  namePh:        { ru: 'Как к вам обращаться',     en: 'Your name' },
-  passwordPh:    { ru: 'Пароль (от 6 символов)',   en: 'Password (6+ chars)' },
-  loginBtn:      { ru: 'Войти',                    en: 'Sign in' },
-  registerBtn:   { ru: 'Зарегистрироваться',       en: 'Create account' },
-  switchToReg:   { ru: 'Нет аккаунта? Создать',    en: 'No account? Sign up' },
-  switchToLog:   { ru: 'Уже есть аккаунт? Войти',  en: 'Have an account? Sign in' },
-  or:            { ru: 'или',                       en: 'or' },
-  googleHint:    { ru: 'Войти через Google',       en: 'Continue with Google' },
-  googleNotSet:  { ru: 'Google вход пока не настроен',
-                   en: 'Google sign-in is not configured yet' },
-  subtitle:      { ru: 'Личный кинодневник. Сохраняй фильмы и получай рекомендации.',
-                   en: 'Your personal film diary. Save movies, get recommendations.' },
-} as const;
 
 interface Props {
   th: Theme;
   lang: Lang;
+  initialMode?: 'login' | 'register';
+  onClose?: () => void;
 }
 
-export function AuthScreen({ th, lang }: Props) {
+/**
+ * Sign in / register screen.
+ *
+ * Renders as a full-screen overlay over the app — guests can dismiss it
+ * via the close button or by pressing Escape. When `onClose` is omitted
+ * the close affordance is hidden (used during forced re-auth flows, if any).
+ */
+export function AuthScreen({ th, lang, initialMode = 'login', onClose }: Props) {
   const { login, register, googleLogin } = useAuth();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -44,6 +36,7 @@ export function AuthScreen({ th, lang }: Props) {
     try {
       if (mode === 'login') await login(email.trim(), password);
       else await register(email.trim(), password, name.trim() || undefined);
+      onClose?.();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : String(ex));
     } finally {
@@ -55,6 +48,7 @@ export function AuthScreen({ th, lang }: Props) {
     setErr(null); setBusy(true);
     try {
       await googleLogin(idToken);
+      onClose?.();
     } catch (ex) {
       setErr(ex instanceof Error ? ex.message : String(ex));
     } finally {
@@ -70,16 +64,39 @@ export function AuthScreen({ th, lang }: Props) {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh', background: th.bg, color: th.ink,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
-    }}>
-      <div style={{
-        width: '100%', maxWidth: 380, background: th.surface,
-        border: `1px solid ${th.line}`, borderRadius: 18,
-        padding: '28px 26px', boxShadow: th.shadow,
-      }}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={() => onClose?.()}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 40,
+        minHeight: '100vh', background: 'rgba(30,15,25,0.55)',
+        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
+        color: th.ink,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 380, background: th.surface,
+          border: `1px solid ${th.line}`, borderRadius: 18,
+          padding: '28px 26px', boxShadow: th.shadow,
+          position: 'relative',
+        }}
+      >
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="close"
+            style={{
+              position: 'absolute', top: 10, right: 12,
+              border: 'none', background: 'transparent', color: th.ink3, fontSize: 22,
+              cursor: 'pointer', padding: 0, width: 28, height: 28, lineHeight: 1,
+            }}
+          >×</button>
+        )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
           <div style={{ width: 36, height: 36, borderRadius: 8, overflow: 'hidden', boxShadow: '0 2px 6px rgba(0,0,0,0.15)' }}>
             <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
@@ -93,9 +110,9 @@ export function AuthScreen({ th, lang }: Props) {
           </div>
           <div>
             <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontWeight: 700, fontSize: 20, letterSpacing: -0.3 }}>
-              {mode === 'login' ? L.titleLogin[lang] : L.titleRegister[lang]}
+              {mode === 'login' ? T.authTitleLogin[lang] : T.authTitleRegister[lang]}
             </div>
-            <div style={{ fontSize: 12, color: th.ink3, marginTop: 3 }}>{L.subtitle[lang]}</div>
+            <div style={{ fontSize: 12, color: th.ink3, marginTop: 3 }}>{T.authSubtitle[lang]}</div>
           </div>
         </div>
 
@@ -103,7 +120,7 @@ export function AuthScreen({ th, lang }: Props) {
           {mode === 'register' && (
             <input
               type="text"
-              placeholder={L.namePh[lang]}
+              placeholder={T.authNamePh[lang]}
               value={name}
               onChange={(e) => setName(e.target.value)}
               style={inputStyle}
@@ -112,7 +129,7 @@ export function AuthScreen({ th, lang }: Props) {
           )}
           <input
             type="email"
-            placeholder={L.emailPh[lang]}
+            placeholder={T.authEmailPh[lang]}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -121,7 +138,7 @@ export function AuthScreen({ th, lang }: Props) {
           />
           <input
             type="password"
-            placeholder={L.passwordPh[lang]}
+            placeholder={T.authPasswordPh[lang]}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -147,13 +164,13 @@ export function AuthScreen({ th, lang }: Props) {
               opacity: busy ? 0.7 : 1,
             }}
           >
-            {mode === 'login' ? L.loginBtn[lang] : L.registerBtn[lang]}
+            {mode === 'login' ? T.authLoginBtn[lang] : T.authRegisterBtn[lang]}
           </button>
         </form>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 12px' }}>
           <div style={{ flex: 1, height: 1, background: th.line }} />
-          <div style={{ fontSize: 11, color: th.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>{L.or[lang]}</div>
+          <div style={{ fontSize: 11, color: th.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>{T.authOr[lang]}</div>
           <div style={{ flex: 1, height: 1, background: th.line }} />
         </div>
 
@@ -161,7 +178,7 @@ export function AuthScreen({ th, lang }: Props) {
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <GoogleLogin
               onSuccess={(res) => { if (res.credential) onGoogle(res.credential); }}
-              onError={() => setErr('Google sign-in failed')}
+              onError={() => setErr(T.authGoogleFail[lang])}
               theme={th.name === 'dark' ? 'filled_black' : 'outline'}
               shape="pill"
               text={mode === 'login' ? 'signin_with' : 'signup_with'}
@@ -169,7 +186,7 @@ export function AuthScreen({ th, lang }: Props) {
           </div>
         ) : (
           <div style={{ fontSize: 12, color: th.ink3, textAlign: 'center', padding: '4px 0' }}>
-            {L.googleNotSet[lang]}
+            {T.authGoogleNotSet[lang]}
           </div>
         )}
 
@@ -182,7 +199,7 @@ export function AuthScreen({ th, lang }: Props) {
             fontSize: 13, cursor: 'pointer', textDecoration: 'underline',
           }}
         >
-          {mode === 'login' ? L.switchToReg[lang] : L.switchToLog[lang]}
+          {mode === 'login' ? T.authSwitchToReg[lang] : T.authSwitchToLog[lang]}
         </button>
       </div>
     </div>

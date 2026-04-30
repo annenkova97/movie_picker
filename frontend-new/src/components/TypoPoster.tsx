@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Lang } from '../i18n';
+import { T } from '../i18n';
 import type { UiMovie } from '../types';
 
 interface Props {
@@ -71,7 +72,7 @@ function TypoFallback({ movie, lang, w, h }: Required<Pick<Props, 'movie' | 'lan
   const fontStack = `'Fraunces', 'Playfair Display', Georgia, serif`;
   const monoStack = `'JetBrains Mono', ui-monospace, Menlo, monospace`;
   const rating = movie.publicRating > 0 ? movie.publicRating.toFixed(1) : '—';
-  const runtimeLabel = lang === 'ru' ? `${movie.runtime} мин` : `${movie.runtime} min`;
+  const runtimeLabel = `${movie.runtime} ${T.min[lang]}`;
 
   let content: React.ReactNode;
   if (layout === 0) {

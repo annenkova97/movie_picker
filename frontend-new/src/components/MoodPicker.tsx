@@ -25,9 +25,9 @@ export function MoodPicker({ th, lang, onPick, loading = false }: Props) {
     const base = (overrideText ?? text).trim();
     const parts: string[] = [];
     if (base) parts.push(base);
-    if (genre) parts.push(lang === 'ru' ? `жанр: ${genre}` : `genre: ${genre}`);
-    if (duration) parts.push(lang === 'ru' ? `длительность: ${duration}` : `length: ${duration}`);
-    if (era) parts.push(lang === 'ru' ? `эпоха: ${era}` : `era: ${era}`);
+    if (genre) parts.push(`${T.moodGenreTag[lang]}: ${genre}`);
+    if (duration) parts.push(`${T.moodLengthTag[lang]}: ${duration}`);
+    if (era) parts.push(`${T.moodEraTag[lang]}: ${era}`);
     return parts.length ? parts.join(', ') : chips[0];
   };
 

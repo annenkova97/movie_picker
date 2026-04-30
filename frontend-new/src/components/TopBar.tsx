@@ -10,10 +10,11 @@ interface Props {
   setLang: (l: Lang) => void;
   theme: ThemeName;
   setTheme: (t: ThemeName) => void;
+  onSignInClick?: () => void;
   compact?: boolean;
 }
 
-export function TopBar({ th, lang, setLang, theme, setTheme, compact = false }: Props) {
+export function TopBar({ th, lang, setLang, theme, setTheme, onSignInClick, compact = false }: Props) {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -78,6 +79,17 @@ export function TopBar({ th, lang, setLang, theme, setTheme, compact = false }: 
           }}>
           {theme === 'light' ? '☾' : '☀'}
         </button>
+        {!user && onSignInClick && (
+          <button
+            onClick={onSignInClick}
+            style={{
+              border: `1px solid ${th.line}`, background: 'transparent', color: th.ink,
+              padding: compact ? '6px 12px' : '7px 16px', borderRadius: 999, cursor: 'pointer',
+              fontSize: compact ? 12 : 13, fontWeight: 600, letterSpacing: 0.2,
+              whiteSpace: 'nowrap',
+            }}
+          >{T.signIn[lang]}</button>
+        )}
         {user && (
           <div ref={wrapRef} style={{ position: 'relative' }}>
             <button

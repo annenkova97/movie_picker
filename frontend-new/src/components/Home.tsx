@@ -76,9 +76,7 @@ export function Home(props: Props) {
           fontSize: 32, lineHeight: 1.05, letterSpacing: -0.8,
           margin: '10px 0 0', color: th.ink,
         } as React.CSSProperties}>
-          {lang === 'ru'
-            ? <>что посмотрим <span style={{ fontStyle: 'italic', fontWeight: 400 }}>сегодня</span>?</>
-            : <>what\u2019s on <span style={{ fontStyle: 'italic', fontWeight: 400 }}>tonight</span>?</>}
+          {T.homeQuestion[lang]} <span style={{ fontStyle: 'italic', fontWeight: 400 }}>{T.homeQuestionEm[lang]}</span>{T.homeQuestionEnd[lang]}
         </h1>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, borderBottom: `1px solid ${th.line}`, flexWrap: 'wrap' }}>
@@ -240,8 +238,8 @@ function PosterCard({ m, th, lang, hero, w, h, onClick }: { m: UiMovie; th: Them
   const src: Record<RecSource, string> = {
     telegram: '✈ Telegram',
     instagram: '◎ Instagram',
-    friends: `♥ ${lang === 'ru' ? 'Друзья' : 'Friends'}`,
-    personal: lang === 'ru' ? '• Личное' : '• Personal',
+    friends: `♥ ${T.posterFriends[lang]}`,
+    personal: `• ${T.posterPersonal[lang]}`,
   };
   return (
     <button onClick={onClick} style={{
@@ -269,7 +267,7 @@ function Empty({ th, lang }: { th: Theme; lang: Lang }) {
       }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, fontFamily: 'ui-monospace,monospace', color: th.ink3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>
-            ✦ {lang === 'ru' ? 'С чего начать' : 'Where to start'}
+            ✦ {T.emptyKicker[lang]}
           </div>
           <h2 style={{
             margin: 0, fontFamily: "'Fraunces',serif", fontStyle: 'italic',
