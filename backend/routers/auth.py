@@ -55,10 +55,15 @@ async def register(payload: UserCreate):
 @router.post("/login", response_model=AuthResponse)
 async def login(payload: UserLogin):
     user_row = await db.get_user_by_email(payload.email)
-    if not user_row or not user_row["password_hash"]:
+    if not user_row:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
+        )
+    if not user_row["password_hash"]:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Этот аккаунт привязан к Google. Нажми «Войти через Google».",
         )
     if not verify_password(payload.password, user_row["password_hash"]):
         raise HTTPException(
