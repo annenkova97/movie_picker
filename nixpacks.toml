@@ -1,0 +1,6 @@
+# Railway / Nixpacks build config.
+# Adds ffmpeg (used for audio extraction → Whisper) on top of the
+# Python defaults that nixpacks auto-detects from requirements.txt.
+
+[phases.setup]
+nixPkgs = ["...", "ffmpeg-full"]
