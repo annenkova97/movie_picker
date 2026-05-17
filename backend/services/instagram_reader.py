@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -45,6 +46,15 @@ APIFY_SYNC_ENDPOINT = (
     "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
 )
 APIFY_TIMEOUT_SECONDS = 180.0
+
+# Instagram CDN иногда рвёт TLS-соединение посреди тела ответа.
+# Браузерный UA и ретраи лечат это в ~99% случаев.
+CDN_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+    "Version/17.0 Safari/605.1.15"
+)
+CDN_DOWNLOAD_ATTEMPTS = 3
 
 
 SYSTEM_PROMPT = """\
@@ -162,15 +172,43 @@ def _call_apify_instagram(url: str) -> dict:
 
 
 def _download_video(video_url: str, dest_path: Path) -> None:
-    """Качаем .mp4 с Instagram CDN — куки не нужны, ссылка подписанная."""
-    try:
-        with httpx.stream("GET", video_url, timeout=60.0, follow_redirects=True) as resp:
-            resp.raise_for_status()
-            with open(dest_path, "wb") as f:
-                for chunk in resp.iter_bytes(chunk_size=64 * 1024):
-                    f.write(chunk)
-    except httpx.HTTPError as exc:
-        raise InstagramReaderError(f"Не удалось скачать видео с CDN: {exc}") from exc
+    """Качаем .mp4 с Instagram CDN — куки не нужны, ссылка подписанная.
+
+    Instagram CDN периодически роняет TLS-соединение на середине ответа
+    (видно как ``SSL: UNEXPECTED_EOF_WHILE_READING``). Делаем несколько
+    попыток с экспоненциальным бэкоффом — подписанная ссылка из Apify
+    обычно живёт достаточно долго, чтобы пережить 2-3 ретрая.
+    """
+    headers = {"User-Agent": CDN_USER_AGENT}
+    last_exc: Exception | None = None
+
+    for attempt in range(1, CDN_DOWNLOAD_ATTEMPTS + 1):
+        try:
+            with httpx.stream(
+                "GET",
+                video_url,
+                timeout=60.0,
+                follow_redirects=True,
+                headers=headers,
+            ) as resp:
+                resp.raise_for_status()
+                with open(dest_path, "wb") as f:
+                    for chunk in resp.iter_bytes(chunk_size=64 * 1024):
+                        f.write(chunk)
+            return
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            # Удаляем недоскачанный мусор, чтобы при ретрае писать с нуля
+            try:
+                dest_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            if attempt < CDN_DOWNLOAD_ATTEMPTS:
+                time.sleep(1.5 * attempt)
+
+    raise InstagramReaderError(
+        f"Не удалось скачать видео с CDN за {CDN_DOWNLOAD_ATTEMPTS} попытки: {last_exc}"
+    ) from last_exc
 
 
 def download_reel(url: str) -> tuple[str, str]:
