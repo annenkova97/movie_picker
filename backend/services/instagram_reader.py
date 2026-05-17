@@ -10,12 +10,13 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-import yt_dlp
+import httpx
 from openai import OpenAI
 
 from backend.config import (
     OPENAI_API_KEY,
-    INSTAGRAM_COOKIES_PATH,
+    APIFY_TOKEN,
+    APIFY_INSTAGRAM_ACTOR,
     INSTAGRAM_VIDEO_DIR,
     INSTAGRAM_TEMP_DIR,
 )
@@ -39,6 +40,11 @@ FFPROBE = _find_bin("ffprobe")
 REEL_URL_PATTERN = re.compile(
     r"https?://(www\.)?instagram\.com/(reel|reels)/[\w-]+/?",
 )
+
+APIFY_SYNC_ENDPOINT = (
+    "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
+)
+APIFY_TIMEOUT_SECONDS = 180.0
 
 
 SYSTEM_PROMPT = """\
@@ -95,49 +101,100 @@ def validate_url(url: str) -> str:
     return url.strip()
 
 
-def _ensure_cookies_file() -> None:
-    if not INSTAGRAM_COOKIES_PATH:
-        raise InstagramReaderError("INSTAGRAM_COOKIES_PATH is not set")
-    if not os.path.exists(INSTAGRAM_COOKIES_PATH):
+def _ensure_apify_token() -> None:
+    if not APIFY_TOKEN:
         raise InstagramReaderError(
-            "Cookie file not found. Set INSTAGRAM_COOKIES_PATH or place file at "
-            f"{INSTAGRAM_COOKIES_PATH}"
+            "APIFY_TOKEN is not set. Get one at "
+            "https://console.apify.com/settings/integrations"
         )
 
 
-def download_reel(url: str) -> tuple[str, str]:
-    _ensure_cookies_file()
+def _shortcode_from_url(url: str) -> str:
+    """Извлекает shortcode рилза из URL — используется как имя файла."""
+    match = re.search(r"/(reel|reels|p)/([\w-]+)", url)
+    if match:
+        return match.group(2)
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()[:11]
 
-    output_template = str(Path(INSTAGRAM_VIDEO_DIR) / "%(id)s.%(ext)s")
-    ydl_opts: dict = {
-        "outtmpl": output_template,
-        "format": "mp4/best",
-        "writeinfojson": True,
-        "quiet": True,
-        "no_warnings": True,
-        "cookiefile": INSTAGRAM_COOKIES_PATH,
+
+def _call_apify_instagram(url: str) -> dict:
+    """Запускает Apify Instagram Scraper и возвращает первый результат.
+
+    Используем синхронный endpoint ``run-sync-get-dataset-items`` —
+    он держит соединение пока actor работает и сразу отдаёт распарсенный JSON.
+    """
+    _ensure_apify_token()
+
+    endpoint = APIFY_SYNC_ENDPOINT.format(actor=APIFY_INSTAGRAM_ACTOR)
+    payload = {
+        "directUrls": [url],
+        "resultsType": "details",
+        "resultsLimit": 1,
+        "addParentData": False,
     }
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=True)
+    try:
+        response = httpx.post(
+            endpoint,
+            params={"token": APIFY_TOKEN},
+            json=payload,
+            timeout=APIFY_TIMEOUT_SECONDS,
+        )
+    except httpx.HTTPError as exc:
+        raise InstagramReaderError(f"Apify request failed: {exc}") from exc
 
-    video_id = info.get("id", "video")
-    ext = info.get("ext", "mp4")
-    video_path = str(Path(INSTAGRAM_VIDEO_DIR) / f"{video_id}.{ext}")
+    if response.status_code >= 400:
+        raise InstagramReaderError(
+            f"Apify returned {response.status_code}: {response.text[:300]}"
+        )
 
-    caption = info.get("description", "") or ""
+    try:
+        items = response.json()
+    except ValueError as exc:
+        raise InstagramReaderError(f"Apify returned non-JSON: {exc}") from exc
 
-    json_path = Path(INSTAGRAM_VIDEO_DIR) / f"{video_id}.info.json"
-    if json_path.exists():
-        try:
-            with open(json_path, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-            if not caption:
-                caption = meta.get("description", "") or ""
-        finally:
-            json_path.unlink(missing_ok=True)
+    if not isinstance(items, list) or not items:
+        raise InstagramReaderError(
+            "Apify не вернул данных для этой ссылки — проверь, что Reel публичный"
+        )
 
-    return video_path, caption
+    return items[0]
+
+
+def _download_video(video_url: str, dest_path: Path) -> None:
+    """Качаем .mp4 с Instagram CDN — куки не нужны, ссылка подписанная."""
+    try:
+        with httpx.stream("GET", video_url, timeout=60.0, follow_redirects=True) as resp:
+            resp.raise_for_status()
+            with open(dest_path, "wb") as f:
+                for chunk in resp.iter_bytes(chunk_size=64 * 1024):
+                    f.write(chunk)
+    except httpx.HTTPError as exc:
+        raise InstagramReaderError(f"Не удалось скачать видео с CDN: {exc}") from exc
+
+
+def download_reel(url: str) -> tuple[str, str]:
+    """Парсит Reel через Apify, скачивает видео, возвращает (video_path, caption).
+
+    Интерфейс совместим с прежней yt-dlp-реализацией, чтобы вызывающий код
+    в ``backend/routers/instagram.py`` не менялся.
+    """
+    item = _call_apify_instagram(url)
+
+    caption = item.get("caption") or ""
+    video_url = item.get("videoUrl") or item.get("video_url")
+
+    if not video_url:
+        raise InstagramReaderError(
+            "В ответе Apify нет ссылки на видео — возможно, это не Reel, "
+            "а фото-пост"
+        )
+
+    short = item.get("shortCode") or _shortcode_from_url(url)
+    video_path = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
+    _download_video(video_url, video_path)
+
+    return str(video_path), caption
 
 
 def extract_audio(video_path: str) -> str:

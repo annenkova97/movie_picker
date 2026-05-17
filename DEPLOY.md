@@ -48,13 +48,10 @@ Railway использует эфемерную файловую систему.
 - **Подключить Volume** — в Railway добавь Volume, смонтируй в `/app/backend/data`. Данные сохранятся между деплоями.
 - **Перейти на Postgres** (надолго правильное решение) — добавь Postgres в Railway одной кнопкой, поменяй `aiosqlite` → `asyncpg` в коде. Скажи, если хочешь сделать.
 
-### Instagram cookies
-Файл `backend/data/instagram_cookies.txt` нужен для работы Instagram-фичи. На Railway его не будет. Варианты:
-- Закоммитить в репо (НЕБЕЗОПАСНО — это твои логин-куки Instagram).
-- Загружать через Volume вручную.
-- Временно отключить Instagram-фичу на продакшене.
+### Instagram через Apify
+Парсинг Instagram-рилзов идёт через [Apify Instagram Scraper](https://apify.com/apify/instagram-scraper). Никаких куки и сессий держать не надо — нужен только `APIFY_TOKEN` в переменных окружения Railway.
 
-Рекомендую на время теста Lovable **не использовать Instagram-импорт** — остальные фичи работают без него.
+Возьми токен в Apify Console → Settings → Integrations и добавь его в Railway → Variables как `APIFY_TOKEN`.
 
 ## 7. Дальше
 
