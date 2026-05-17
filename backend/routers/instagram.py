@@ -11,9 +11,7 @@ from backend.services.instagram_reader import (
     InstagramReaderError,
     validate_url,
     download_reel,
-    extract_audio,
     extract_frames,
-    transcribe,
     extract_movies,
     cleanup_temp_files,
 )
@@ -39,17 +37,14 @@ async def _parse_reel_to_moviebases(
     """
     url = validate_url(payload.url)
 
-    video_path, caption = await run_in_threadpool(download_reel, url)
+    # Apify-actor отдаёт сразу caption + готовый transcript + видео в их KVS,
+    # так что отдельный Whisper и аудио-экстракция здесь не нужны.
+    video_path, caption, transcript = await run_in_threadpool(download_reel, url)
 
-    audio_path: str | None = None
     frame_paths: list[str] = []
-    transcript = ""
-
-    if video_path:
-        audio_path = await run_in_threadpool(extract_audio, video_path)
-        if payload.vision:
-            frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
-        transcript = await run_in_threadpool(transcribe, audio_path)
+    # Кадры нужны только для vision-режима, и только если видео реально скачали.
+    if payload.vision and video_path:
+        frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
 
     try:
         movies_info = await run_in_threadpool(
@@ -68,12 +63,8 @@ async def _parse_reel_to_moviebases(
 
         return await resolve_movies(movies_info, log_tag="instagram/parse")
     finally:
-        cleanup_targets = []
-        if audio_path:
-            cleanup_targets.append(audio_path)
         if frame_paths:
-            cleanup_targets.extend(frame_paths)
-        cleanup_temp_files(cleanup_targets)
+            cleanup_temp_files(frame_paths)
 
 
 @router.post("/parse", response_model=list[MovieBase])
@@ -157,23 +148,19 @@ async def search_from_instagram(
         url = validate_url(payload.url)
         print(f"[instagram/search] url: {url}")
 
-        video_path, caption = await run_in_threadpool(download_reel, url)
-        print(f"[instagram/search] step: apify OK (video={'yes' if video_path else 'no'})")
+        video_path, caption, transcript = await run_in_threadpool(download_reel, url)
+        print(
+            f"[instagram/search] step: apify OK "
+            f"(video={'yes' if video_path else 'no'}, "
+            f"transcript={'yes' if transcript else 'no'})"
+        )
 
-        audio_path: str | None = None
         frame_paths: list[str] = []
-        transcript = ""
 
-        if video_path:
-            audio_path = await run_in_threadpool(extract_audio, video_path)
-            print(f"[instagram/search] step: extract_audio OK")
-            if payload.vision:
-                frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
-                print(f"[instagram/search] step: extract_frames OK")
-            transcript = await run_in_threadpool(transcribe, audio_path)
-            print(f"[instagram/search] step: transcribe OK")
-        else:
-            print(f"[instagram/search] step: video unavailable, caption-only mode")
+        if payload.vision and video_path:
+            frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
+            print(f"[instagram/search] step: extract_frames OK")
+
         print(f"[instagram/search] transcript: {transcript[:200]}")
         print(f"[instagram/search] caption: {caption[:200] if caption else '(empty)'}")
 
@@ -209,11 +196,5 @@ async def search_from_instagram(
         print(f"[instagram/search] ERROR (unexpected): {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
     finally:
-        cleanup_targets = []
-        try:
-            if 'audio_path' in locals() and audio_path:
-                cleanup_targets.append(audio_path)
-            if 'frame_paths' in locals() and frame_paths:
-                cleanup_targets.extend(frame_paths)
-        finally:
-            cleanup_temp_files(cleanup_targets)
+        if 'frame_paths' in locals() and frame_paths:
+            cleanup_temp_files(frame_paths)

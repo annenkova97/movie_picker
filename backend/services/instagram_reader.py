@@ -128,30 +128,43 @@ def _shortcode_from_url(url: str) -> str:
 
 
 def _call_apify_instagram(url: str) -> dict:
-    """Запускает Apify Instagram Scraper и возвращает первый результат.
+    """Запускает apify/instagram-reel-scraper и возвращает первый результат.
 
     Используем синхронный endpoint ``run-sync-get-dataset-items`` —
     он держит соединение пока actor работает и сразу отдаёт распарсенный JSON.
+    Если HTTP-соединение рвётся (Apify иногда так делает на длинных runs),
+    делаем один ретрай — actor идемпотентен.
     """
     _ensure_apify_token()
 
     endpoint = APIFY_SYNC_ENDPOINT.format(actor=APIFY_INSTAGRAM_ACTOR)
     payload = {
-        "directUrls": [url],
-        "resultsType": "details",
+        # У этого актора поле называется "username", но принимает и URL-ы рилзов.
+        "username": [url],
         "resultsLimit": 1,
-        "addParentData": False,
+        # Apify сам прогонит аудио через свой транскрайбер — Whisper не нужен.
+        "includeTranscript": True,
+        # Видео сохранится в KeyValueStore этого run'а; ссылка прилетит в поле
+        # downloadedVideo, доступна по нашему APIFY_TOKEN (Instagram CDN мимо).
+        "includeDownloadedVideo": True,
     }
 
-    try:
-        response = httpx.post(
-            endpoint,
-            params={"token": APIFY_TOKEN},
-            json=payload,
-            timeout=APIFY_TIMEOUT_SECONDS,
-        )
-    except httpx.HTTPError as exc:
-        raise InstagramReaderError(f"Apify request failed: {exc}") from exc
+    last_exc: Exception | None = None
+    for attempt in range(2):
+        try:
+            response = httpx.post(
+                endpoint,
+                params={"token": APIFY_TOKEN},
+                json=payload,
+                timeout=APIFY_TIMEOUT_SECONDS,
+            )
+            break
+        except httpx.HTTPError as exc:
+            last_exc = exc
+            if attempt == 0:
+                time.sleep(2)
+                continue
+            raise InstagramReaderError(f"Apify request failed: {exc}") from exc
 
     if response.status_code >= 400:
         raise InstagramReaderError(
@@ -211,34 +224,60 @@ def _download_video(video_url: str, dest_path: Path) -> None:
     ) from last_exc
 
 
-def download_reel(url: str) -> tuple[str | None, str]:
-    """Парсит Reel через Apify, по возможности скачивает видео.
+def _download_from_apify_kvs(kvs_url: str, dest_path: Path) -> None:
+    """Качает файл из Apify KeyValueStore — обычная REST-ручка + наш токен.
 
-    Возвращает ``(video_path_or_None, caption)``. ``caption`` приходит из
-    Apify и всегда есть; ``video_path`` — best-effort: если Instagram-CDN
-    не дал скачать .mp4 (типично с IP датацентров), возвращаем ``None``
-    и пайплайн дальше работает только с подписью.
+    URL формата ``https://api.apify.com/v2/key-value-stores/{id}/records/{key}``
+    приходит в поле ``downloadedVideo`` от instagram-reel-scraper.
+    """
+    try:
+        with httpx.stream(
+            "GET",
+            kvs_url,
+            params={"token": APIFY_TOKEN},
+            timeout=120.0,
+            follow_redirects=True,
+        ) as resp:
+            resp.raise_for_status()
+            with open(dest_path, "wb") as f:
+                for chunk in resp.iter_bytes(chunk_size=64 * 1024):
+                    f.write(chunk)
+    except httpx.HTTPError as exc:
+        raise InstagramReaderError(f"Не удалось скачать видео из Apify KVS: {exc}") from exc
+
+
+def download_reel(url: str) -> tuple[str | None, str, str]:
+    """Парсит Reel через Apify-actor instagram-reel-scraper.
+
+    Возвращает ``(video_path_or_None, caption, transcript)``.
+
+    - ``caption`` — текст поста, обычно есть.
+    - ``transcript`` — готовая текстовая расшифровка аудио, делает сам Apify.
+      Whisper больше не вызывается.
+    - ``video_path`` — путь к локально сохранённому .mp4. Качаем из
+      Apify KeyValueStore (их IP, наш токен), а не с Instagram CDN —
+      поэтому работает и с датацентровых IP типа Railway.
+      Если по какой-то причине KVS не отдал — возвращаем ``None``,
+      transcript+caption всё равно достаточно для extract_movies.
     """
     item = _call_apify_instagram(url)
 
     caption = item.get("caption") or ""
-    video_url = item.get("videoUrl") or item.get("video_url")
-
-    if not video_url:
-        # Это, скорее всего, фото-пост — на нём транскрипции и не будет,
-        # но caption-only режим может что-то вытащить.
-        return None, caption
+    transcript = item.get("transcript") or ""
 
     short = item.get("shortCode") or _shortcode_from_url(url)
-    video_path = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
-    try:
-        _download_video(video_url, video_path)
-    except InstagramReaderError as exc:
-        # CDN отказал — не падаем, идём дальше с одним только caption.
-        print(f"[instagram_reader] CDN download failed, falling back to caption-only: {exc}")
-        return None, caption
+    apify_video_url = item.get("downloadedVideo")
+    video_path: str | None = None
 
-    return str(video_path), caption
+    if apify_video_url:
+        dest = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
+        try:
+            _download_from_apify_kvs(apify_video_url, dest)
+            video_path = str(dest)
+        except InstagramReaderError as exc:
+            print(f"[instagram_reader] Apify KVS download failed: {exc}")
+
+    return video_path, caption, transcript
 
 
 def extract_audio(video_path: str) -> str:

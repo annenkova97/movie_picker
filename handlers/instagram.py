@@ -10,8 +10,6 @@ from backend.services.instagram_reader import (
     InstagramReaderError,
     validate_url,
     download_reel,
-    extract_audio,
-    transcribe,
     extract_movies,
     cleanup_temp_files,
 )
@@ -44,17 +42,16 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Обрабатываю Reel... Это может занять до минуты."
     )
 
-    audio_path = None
     frame_paths: list[str] = []
 
     try:
         loop = asyncio.get_event_loop()
 
-        video_path, caption = await loop.run_in_executor(None, download_reel, url)
-        transcript = ""
-        if video_path:
-            audio_path = await loop.run_in_executor(None, extract_audio, video_path)
-            transcript = await loop.run_in_executor(None, transcribe, audio_path)
+        # Apify даёт сразу caption + transcript; видео нам в боте не нужно
+        # (vision-режим не используется).
+        _video_path, caption, transcript = await loop.run_in_executor(
+            None, download_reel, url,
+        )
 
         movies_info = await loop.run_in_executor(
             None, extract_movies, transcript, caption, None, False,
@@ -138,12 +135,8 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         error_text = f"Ошибка: {type(exc).__name__}: {exc}"
         await status_msg.edit_text(error_text[:4000])
     finally:
-        cleanup_targets = []
-        if audio_path:
-            cleanup_targets.append(audio_path)
         if frame_paths:
-            cleanup_targets.extend(frame_paths)
-        cleanup_temp_files(cleanup_targets)
+            cleanup_temp_files(frame_paths)
 
 
 async def _search_omdb(
