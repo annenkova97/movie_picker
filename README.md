@@ -49,7 +49,7 @@ cp .env.example .env
 OMDB_API_KEY=ваш_ключ_omdb
 ANTHROPIC_API_KEY=ваш_ключ_anthropic
 OPENAI_API_KEY=ваш_ключ_openai
-INSTAGRAM_COOKIES_PATH=backend/data/instagram_cookies.txt
+APIFY_TOKEN=ваш_apify_token
 INSTAGRAM_VIDEO_DIR=backend/data/instagram_videos
 ```
 
@@ -72,15 +72,15 @@ INSTAGRAM_VIDEO_DIR=backend/data/instagram_videos
 
 Импортирует фильмы из Instagram Reel по ссылке, сохраняет их в базу и **не удаляет** скачанные видео.
 
-### Как получить cookies.txt
-Instagram требует авторизацию через cookie-файл.
+### Как настроить Apify
+Раньше для парсинга использовались cookies логина в Instagram (yt-dlp) — сессии быстро инвалидировались. Теперь Instagram парсится через managed-сервис [Apify](https://apify.com/).
 
-1. В Chrome установите расширение **Get cookies.txt**.
-2. Откройте `https://www.instagram.com/` и войдите в свой аккаунт.
-3. Нажмите на иконку расширения и скачайте файл `cookies.txt`.
-4. Положите файл сюда: `backend/data/instagram_cookies.txt`
+1. Зарегистрируйся на https://apify.com.
+2. Включи (rent) actor **apify/instagram-scraper** в Apify Store.
+3. В Console → Settings → Integrations → создай personal API token.
+4. Положи токен в `.env` как `APIFY_TOKEN=...`.
 
-При необходимости можно указать путь в `.env` через `INSTAGRAM_COOKIES_PATH`.
+Тариф: на free-плане Apify даёт ~$5 кредита/мес — этого хватает на сотни рилзов.
 
 ### Куда сохраняются видео
 По умолчанию: `backend/data/instagram_videos` (можно изменить через `INSTAGRAM_VIDEO_DIR`).

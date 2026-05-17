@@ -1,10 +1,10 @@
 """Diagnostic endpoint for production sanity-checks.
 
 Reports the state of every external dependency the app needs:
-- yt-dlp + ffmpeg/ffprobe (Instagram pipeline)
+- ffmpeg/ffprobe (audio extraction for Whisper)
+- Apify token (Instagram parsing)
 - DB engine (SQLite vs PostgreSQL) and a live SELECT 1
 - Required API keys set or missing
-- INSTAGRAM_COOKIES_PATH presence
 
 Public — no auth — but only exposes booleans / versions, nothing sensitive.
 Hit it with: curl https://<host>/api/health/full
@@ -20,7 +20,6 @@ from fastapi import APIRouter
 from fastapi.concurrency import run_in_threadpool
 
 from backend import config
-from backend import database as db
 
 
 router = APIRouter(prefix="/api/health", tags=["health"])
@@ -89,30 +88,20 @@ async def health_quick() -> dict[str, Any]:
 @router.get("/full")
 async def health_full() -> dict[str, Any]:
     """Full diagnostic — checks every external dep. Public, but read-only."""
-    yt_dlp_info = await run_in_threadpool(_bin_version, "yt-dlp")
     ffmpeg_info = await run_in_threadpool(_bin_version, "ffmpeg", ["-version"])
     ffprobe_info = await run_in_threadpool(_bin_version, "ffprobe", ["-version"])
     db_info = await _db_probe()
 
-    cookies_path = config.INSTAGRAM_COOKIES_PATH
-    cookies_present = False
-    try:
-        with open(cookies_path, "rb"):
-            cookies_present = True
-    except OSError:
-        cookies_present = False
-
     overall_ok = (
-        yt_dlp_info["ok"]
-        and ffmpeg_info["ok"]
+        ffmpeg_info["ok"]
         and ffprobe_info["ok"]
         and db_info["ok"]
+        and bool(config.APIFY_TOKEN)
     )
 
     return {
         "ok": overall_ok,
         "binaries": {
-            "yt_dlp": yt_dlp_info,
             "ffmpeg": ffmpeg_info,
             "ffprobe": ffprobe_info,
         },
@@ -122,43 +111,13 @@ async def health_full() -> dict[str, Any]:
             "ANTHROPIC_API_KEY": _key_state(config.ANTHROPIC_API_KEY),
             "OPENAI_API_KEY": _key_state(config.OPENAI_API_KEY),
             "TELEGRAM_BOT_TOKEN": _key_state(config.TELEGRAM_BOT_TOKEN),
+            "APIFY_TOKEN": _key_state(config.APIFY_TOKEN),
             "JWT_SECRET": {"set": config.JWT_SECRET != "dev-only-insecure-secret-change-me"},
             "GOOGLE_CLIENT_ID": _key_state(config.GOOGLE_CLIENT_ID),
         },
         "instagram": {
-            "cookies_path": cookies_path,
-            "cookies_present": cookies_present,
+            "backend": "apify",
+            "actor": config.APIFY_INSTAGRAM_ACTOR,
+            "token_set": bool(config.APIFY_TOKEN),
         },
     }
-
-
-@router.get("/yt-dlp-probe")
-async def yt_dlp_probe(url: str) -> dict[str, Any]:
-    """Try to fetch metadata for a URL with yt-dlp without downloading.
-
-    Use this to verify yt-dlp can reach Instagram (or any provider) from prod
-    without paying the cost of a full download. Pass any public Reel URL.
-    """
-    yt_dlp_path = shutil.which("yt-dlp") or "/opt/homebrew/bin/yt-dlp"
-
-    cmd = [yt_dlp_path, "--dump-json", "--skip-download", "--no-warnings", url]
-    if config.INSTAGRAM_COOKIES_PATH:
-        try:
-            with open(config.INSTAGRAM_COOKIES_PATH, "rb"):
-                cmd[1:1] = ["--cookies", config.INSTAGRAM_COOKIES_PATH]
-        except OSError:
-            pass
-
-    def _run() -> dict[str, Any]:
-        try:
-            out = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-            return {
-                "ok": out.returncode == 0,
-                "exit_code": out.returncode,
-                "stderr_tail": (out.stderr or "").strip().splitlines()[-5:],
-                "title_seen": "title" in (out.stdout or "")[:5000],
-            }
-        except subprocess.TimeoutExpired:
-            return {"ok": False, "exit_code": None, "stderr_tail": ["timeout after 30s"], "title_seen": False}
-
-    return await run_in_threadpool(_run)

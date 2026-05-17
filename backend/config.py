@@ -24,10 +24,6 @@ os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 OMDB_BASE_URL = "http://www.omdbapi.com/"
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-INSTAGRAM_COOKIES_PATH = os.getenv(
-    "INSTAGRAM_COOKIES_PATH",
-    os.path.join(DATA_DIR, "instagram_cookies.txt")
-)
 INSTAGRAM_VIDEO_DIR = os.getenv(
     "INSTAGRAM_VIDEO_DIR",
     os.path.join(DATA_DIR, "instagram_videos")
@@ -39,3 +35,11 @@ INSTAGRAM_TEMP_DIR = os.getenv(
 
 os.makedirs(INSTAGRAM_VIDEO_DIR, exist_ok=True)
 os.makedirs(INSTAGRAM_TEMP_DIR, exist_ok=True)
+
+# Apify — Instagram парсится через их Instagram Scraper actor.
+# Токен берётся в https://console.apify.com/settings/integrations
+APIFY_TOKEN = os.getenv("APIFY_TOKEN", "")
+APIFY_INSTAGRAM_ACTOR = os.getenv(
+    "APIFY_INSTAGRAM_ACTOR",
+    "apify~instagram-scraper",
+)
