@@ -211,11 +211,13 @@ def _download_video(video_url: str, dest_path: Path) -> None:
     ) from last_exc
 
 
-def download_reel(url: str) -> tuple[str, str]:
-    """Парсит Reel через Apify, скачивает видео, возвращает (video_path, caption).
+def download_reel(url: str) -> tuple[str | None, str]:
+    """Парсит Reel через Apify, по возможности скачивает видео.
 
-    Интерфейс совместим с прежней yt-dlp-реализацией, чтобы вызывающий код
-    в ``backend/routers/instagram.py`` не менялся.
+    Возвращает ``(video_path_or_None, caption)``. ``caption`` приходит из
+    Apify и всегда есть; ``video_path`` — best-effort: если Instagram-CDN
+    не дал скачать .mp4 (типично с IP датацентров), возвращаем ``None``
+    и пайплайн дальше работает только с подписью.
     """
     item = _call_apify_instagram(url)
 
@@ -223,14 +225,18 @@ def download_reel(url: str) -> tuple[str, str]:
     video_url = item.get("videoUrl") or item.get("video_url")
 
     if not video_url:
-        raise InstagramReaderError(
-            "В ответе Apify нет ссылки на видео — возможно, это не Reel, "
-            "а фото-пост"
-        )
+        # Это, скорее всего, фото-пост — на нём транскрипции и не будет,
+        # но caption-only режим может что-то вытащить.
+        return None, caption
 
     short = item.get("shortCode") or _shortcode_from_url(url)
     video_path = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
-    _download_video(video_url, video_path)
+    try:
+        _download_video(video_url, video_path)
+    except InstagramReaderError as exc:
+        # CDN отказал — не падаем, идём дальше с одним только caption.
+        print(f"[instagram_reader] CDN download failed, falling back to caption-only: {exc}")
+        return None, caption
 
     return str(video_path), caption
 

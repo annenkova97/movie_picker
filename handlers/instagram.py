@@ -51,8 +51,10 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         loop = asyncio.get_event_loop()
 
         video_path, caption = await loop.run_in_executor(None, download_reel, url)
-        audio_path = await loop.run_in_executor(None, extract_audio, video_path)
-        transcript = await loop.run_in_executor(None, transcribe, audio_path)
+        transcript = ""
+        if video_path:
+            audio_path = await loop.run_in_executor(None, extract_audio, video_path)
+            transcript = await loop.run_in_executor(None, transcribe, audio_path)
 
         movies_info = await loop.run_in_executor(
             None, extract_movies, transcript, caption, None, False,

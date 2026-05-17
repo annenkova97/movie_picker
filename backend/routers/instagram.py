@@ -40,13 +40,16 @@ async def _parse_reel_to_moviebases(
     url = validate_url(payload.url)
 
     video_path, caption = await run_in_threadpool(download_reel, url)
-    audio_path = await run_in_threadpool(extract_audio, video_path)
 
+    audio_path: str | None = None
     frame_paths: list[str] = []
-    if payload.vision:
-        frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
+    transcript = ""
 
-    transcript = await run_in_threadpool(transcribe, audio_path)
+    if video_path:
+        audio_path = await run_in_threadpool(extract_audio, video_path)
+        if payload.vision:
+            frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
+        transcript = await run_in_threadpool(transcribe, audio_path)
 
     try:
         movies_info = await run_in_threadpool(
@@ -155,18 +158,22 @@ async def search_from_instagram(
         print(f"[instagram/search] url: {url}")
 
         video_path, caption = await run_in_threadpool(download_reel, url)
-        print(f"[instagram/search] step: download OK")
+        print(f"[instagram/search] step: apify OK (video={'yes' if video_path else 'no'})")
 
-        audio_path = await run_in_threadpool(extract_audio, video_path)
-        print(f"[instagram/search] step: extract_audio OK")
-
+        audio_path: str | None = None
         frame_paths: list[str] = []
-        if payload.vision:
-            frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
-            print(f"[instagram/search] step: extract_frames OK")
+        transcript = ""
 
-        transcript = await run_in_threadpool(transcribe, audio_path)
-        print(f"[instagram/search] step: transcribe OK")
+        if video_path:
+            audio_path = await run_in_threadpool(extract_audio, video_path)
+            print(f"[instagram/search] step: extract_audio OK")
+            if payload.vision:
+                frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
+                print(f"[instagram/search] step: extract_frames OK")
+            transcript = await run_in_threadpool(transcribe, audio_path)
+            print(f"[instagram/search] step: transcribe OK")
+        else:
+            print(f"[instagram/search] step: video unavailable, caption-only mode")
         print(f"[instagram/search] transcript: {transcript[:200]}")
         print(f"[instagram/search] caption: {caption[:200] if caption else '(empty)'}")
 
