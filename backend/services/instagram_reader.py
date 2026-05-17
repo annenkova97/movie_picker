@@ -42,10 +42,11 @@ REEL_URL_PATTERN = re.compile(
     r"https?://(www\.)?instagram\.com/(reel|reels)/[\w-]+/?",
 )
 
-APIFY_SYNC_ENDPOINT = (
-    "https://api.apify.com/v2/acts/{actor}/run-sync-get-dataset-items"
-)
-APIFY_TIMEOUT_SECONDS = 180.0
+APIFY_RUN_ENDPOINT = "https://api.apify.com/v2/acts/{actor}/runs"
+APIFY_RUN_STATUS_ENDPOINT = "https://api.apify.com/v2/actor-runs/{run_id}"
+APIFY_DATASET_ENDPOINT = "https://api.apify.com/v2/datasets/{dataset_id}/items"
+APIFY_TIMEOUT_SECONDS = 240.0
+APIFY_POLL_INTERVAL_SECONDS = 3.0
 
 # Instagram CDN иногда рвёт TLS-соединение посреди тела ответа.
 # Браузерный UA и ретраи лечат это в ~99% случаев.
@@ -130,14 +131,14 @@ def _shortcode_from_url(url: str) -> str:
 def _call_apify_instagram(url: str) -> dict:
     """Запускает apify/instagram-reel-scraper и возвращает первый результат.
 
-    Используем синхронный endpoint ``run-sync-get-dataset-items`` —
-    он держит соединение пока actor работает и сразу отдаёт распарсенный JSON.
-    Если HTTP-соединение рвётся (Apify иногда так делает на длинных runs),
-    делаем один ретрай — actor идемпотентен.
+    Используем async flow вместо ``run-sync-get-dataset-items``:
+    он держит TCP-соединение всё время работы actor'а (30-40 секунд) и
+    регулярно обрывается на стороне Apify ``Server disconnected``.
+    Поэтому: стартуем run, дёргаем статус каждые 3 секунды, потом
+    читаем dataset. Каждый HTTP-вызов короткий и идемпотентный.
     """
     _ensure_apify_token()
 
-    endpoint = APIFY_SYNC_ENDPOINT.format(actor=APIFY_INSTAGRAM_ACTOR)
     payload = {
         # У этого актора поле называется "username", но принимает и URL-ы рилзов.
         "username": [url],
@@ -149,30 +150,71 @@ def _call_apify_instagram(url: str) -> dict:
         "includeDownloadedVideo": True,
     }
 
-    last_exc: Exception | None = None
-    for attempt in range(2):
-        try:
-            response = httpx.post(
-                endpoint,
-                params={"token": APIFY_TOKEN},
-                json=payload,
-                timeout=APIFY_TIMEOUT_SECONDS,
-            )
-            break
-        except httpx.HTTPError as exc:
-            last_exc = exc
-            if attempt == 0:
-                time.sleep(2)
-                continue
-            raise InstagramReaderError(f"Apify request failed: {exc}") from exc
+    # 1. Стартуем run
+    try:
+        start_resp = httpx.post(
+            APIFY_RUN_ENDPOINT.format(actor=APIFY_INSTAGRAM_ACTOR),
+            params={"token": APIFY_TOKEN},
+            json=payload,
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
+        raise InstagramReaderError(f"Apify run start failed: {exc}") from exc
 
-    if response.status_code >= 400:
+    if start_resp.status_code >= 400:
         raise InstagramReaderError(
-            f"Apify returned {response.status_code}: {response.text[:300]}"
+            f"Apify run start returned {start_resp.status_code}: {start_resp.text[:300]}"
+        )
+
+    run_data = (start_resp.json() or {}).get("data", {})
+    run_id = run_data.get("id")
+    dataset_id = run_data.get("defaultDatasetId")
+    if not run_id or not dataset_id:
+        raise InstagramReaderError("Apify did not return run/dataset id")
+
+    # 2. Поллим статус, пока не закончится
+    deadline = time.time() + APIFY_TIMEOUT_SECONDS
+    status_url = APIFY_RUN_STATUS_ENDPOINT.format(run_id=run_id)
+    final_status: str | None = None
+    while time.time() < deadline:
+        time.sleep(APIFY_POLL_INTERVAL_SECONDS)
+        try:
+            status_resp = httpx.get(
+                status_url,
+                params={"token": APIFY_TOKEN},
+                timeout=15.0,
+            )
+        except httpx.HTTPError:
+            # Транзитивная сетевая ошибка — просто продолжаем поллить
+            continue
+        if status_resp.status_code >= 400:
+            continue
+        final_status = ((status_resp.json() or {}).get("data") or {}).get("status")
+        if final_status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
+            break
+
+    if final_status != "SUCCEEDED":
+        raise InstagramReaderError(
+            f"Apify run finished with status: {final_status or 'timeout'}"
+        )
+
+    # 3. Читаем dataset (короткий запрос, без длинных hold-alive)
+    try:
+        items_resp = httpx.get(
+            APIFY_DATASET_ENDPOINT.format(dataset_id=dataset_id),
+            params={"token": APIFY_TOKEN, "limit": 1},
+            timeout=30.0,
+        )
+    except httpx.HTTPError as exc:
+        raise InstagramReaderError(f"Apify dataset fetch failed: {exc}") from exc
+
+    if items_resp.status_code >= 400:
+        raise InstagramReaderError(
+            f"Apify dataset returned {items_resp.status_code}: {items_resp.text[:300]}"
         )
 
     try:
-        items = response.json()
+        items = items_resp.json()
     except ValueError as exc:
         raise InstagramReaderError(f"Apify returned non-JSON: {exc}") from exc
 
