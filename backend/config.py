@@ -41,5 +41,7 @@ os.makedirs(INSTAGRAM_TEMP_DIR, exist_ok=True)
 APIFY_TOKEN = os.getenv("APIFY_TOKEN", "")
 APIFY_INSTAGRAM_ACTOR = os.getenv(
     "APIFY_INSTAGRAM_ACTOR",
-    "apify~instagram-scraper",
+    # Reel-specific actor: даёт готовый transcript + кладёт видео в свой KVS,
+    # так что нам не нужны Whisper и прямой download c Instagram CDN.
+    "apify~instagram-reel-scraper",
 )
