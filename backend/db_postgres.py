@@ -45,11 +45,21 @@ async def init_db() -> None:
                 email TEXT UNIQUE NOT NULL,
                 password_hash TEXT,
                 google_sub TEXT UNIQUE,
+                telegram_id BIGINT UNIQUE,
                 name TEXT,
                 avatar_url TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Миграция для существующих БД без telegram_id (Railway уже задеплоен).
+        # BIGINT — у телеграма user_id может быть > 2^31.
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT"
+        )
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id "
+            "ON users(telegram_id) WHERE telegram_id IS NOT NULL"
+        )
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)"
@@ -140,15 +150,21 @@ def _row_to_movie(row) -> Movie:
     )
 
 
+_USER_COLS = (
+    "id, email, password_hash, google_sub, telegram_id, name, avatar_url, created_at"
+)
+
+
 def _row_to_user(row) -> dict:
     return {
         "id": row[0],
         "email": row[1],
         "password_hash": row[2],
         "google_sub": row[3],
-        "name": row[4],
-        "avatar_url": row[5],
-        "created_at": row[6] if isinstance(row[6], datetime) else datetime.now(),
+        "telegram_id": row[4],
+        "name": row[5],
+        "avatar_url": row[6],
+        "created_at": row[7] if isinstance(row[7], datetime) else datetime.now(),
     }
 
 
@@ -164,8 +180,7 @@ async def has_any_users() -> bool:
 async def get_user_by_id(user_id: int) -> Optional[dict]:
     async with _pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT id, email, password_hash, google_sub, name, avatar_url, created_at "
-            "FROM users WHERE id = $1",
+            f"SELECT {_USER_COLS} FROM users WHERE id = $1",
             user_id,
         )
         return _row_to_user(row) if row else None
@@ -174,8 +189,7 @@ async def get_user_by_id(user_id: int) -> Optional[dict]:
 async def get_user_by_email(email: str) -> Optional[dict]:
     async with _pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT id, email, password_hash, google_sub, name, avatar_url, created_at "
-            "FROM users WHERE email = $1",
+            f"SELECT {_USER_COLS} FROM users WHERE email = $1",
             email.lower(),
         )
         return _row_to_user(row) if row else None
@@ -184,9 +198,17 @@ async def get_user_by_email(email: str) -> Optional[dict]:
 async def get_user_by_google_sub(google_sub: str) -> Optional[dict]:
     async with _pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT id, email, password_hash, google_sub, name, avatar_url, created_at "
-            "FROM users WHERE google_sub = $1",
+            f"SELECT {_USER_COLS} FROM users WHERE google_sub = $1",
             google_sub,
+        )
+        return _row_to_user(row) if row else None
+
+
+async def get_user_by_telegram_id(telegram_id: int) -> Optional[dict]:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT {_USER_COLS} FROM users WHERE telegram_id = $1",
+            telegram_id,
         )
         return _row_to_user(row) if row else None
 
@@ -195,14 +217,15 @@ async def create_user(
     email: str,
     password_hash: Optional[str] = None,
     google_sub: Optional[str] = None,
+    telegram_id: Optional[int] = None,
     name: Optional[str] = None,
     avatar_url: Optional[str] = None,
 ) -> dict:
     async with _pool.acquire() as conn:
         user_id = await conn.fetchval(
-            "INSERT INTO users (email, password_hash, google_sub, name, avatar_url) "
-            "VALUES ($1, $2, $3, $4, $5) RETURNING id",
-            email.lower(), password_hash, google_sub, name, avatar_url,
+            "INSERT INTO users (email, password_hash, google_sub, telegram_id, name, avatar_url) "
+            "VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+            email.lower(), password_hash, google_sub, telegram_id, name, avatar_url,
         )
     return await get_user_by_id(user_id)
 

@@ -31,13 +31,27 @@ async def _ensure_users_table(db: aiosqlite.Connection) -> None:
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT,
             google_sub TEXT UNIQUE,
+            telegram_id INTEGER UNIQUE,
             name TEXT,
             avatar_url TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    # Миграция для уже существующих БД, где telegram_id ещё нет.
+    async with db.execute("PRAGMA table_info(users)") as cur:
+        cols = {row[1] for row in await cur.fetchall()}
+    if "telegram_id" not in cols:
+        await db.execute("ALTER TABLE users ADD COLUMN telegram_id INTEGER")
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id "
+            "ON users(telegram_id) WHERE telegram_id IS NOT NULL"
+        )
     await db.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)")
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id) "
+        "WHERE telegram_id IS NOT NULL"
+    )
 
 
 async def _migrate_movies_add_user_id(db: aiosqlite.Connection) -> None:
@@ -191,11 +205,15 @@ async def has_any_users() -> bool:
             return (await cur.fetchone()) is not None
 
 
+_USER_COLS = (
+    "id, email, password_hash, google_sub, telegram_id, name, avatar_url, created_at"
+)
+
+
 async def get_user_by_id(user_id: int) -> Optional[dict]:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT id, email, password_hash, google_sub, name, avatar_url, created_at "
-            "FROM users WHERE id = ?",
+            f"SELECT {_USER_COLS} FROM users WHERE id = ?",
             (user_id,),
         ) as cur:
             row = await cur.fetchone()
@@ -205,8 +223,7 @@ async def get_user_by_id(user_id: int) -> Optional[dict]:
 async def get_user_by_email(email: str) -> Optional[dict]:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT id, email, password_hash, google_sub, name, avatar_url, created_at "
-            "FROM users WHERE email = ?",
+            f"SELECT {_USER_COLS} FROM users WHERE email = ?",
             (email.lower(),),
         ) as cur:
             row = await cur.fetchone()
@@ -216,9 +233,18 @@ async def get_user_by_email(email: str) -> Optional[dict]:
 async def get_user_by_google_sub(google_sub: str) -> Optional[dict]:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT id, email, password_hash, google_sub, name, avatar_url, created_at "
-            "FROM users WHERE google_sub = ?",
+            f"SELECT {_USER_COLS} FROM users WHERE google_sub = ?",
             (google_sub,),
+        ) as cur:
+            row = await cur.fetchone()
+            return _row_to_user(row) if row else None
+
+
+async def get_user_by_telegram_id(telegram_id: int) -> Optional[dict]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            f"SELECT {_USER_COLS} FROM users WHERE telegram_id = ?",
+            (telegram_id,),
         ) as cur:
             row = await cur.fetchone()
             return _row_to_user(row) if row else None
@@ -228,14 +254,15 @@ async def create_user(
     email: str,
     password_hash: Optional[str] = None,
     google_sub: Optional[str] = None,
+    telegram_id: Optional[int] = None,
     name: Optional[str] = None,
     avatar_url: Optional[str] = None,
 ) -> dict:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute(
-            "INSERT INTO users (email, password_hash, google_sub, name, avatar_url) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (email.lower(), password_hash, google_sub, name, avatar_url),
+            "INSERT INTO users (email, password_hash, google_sub, telegram_id, name, avatar_url) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (email.lower(), password_hash, google_sub, telegram_id, name, avatar_url),
         )
         await db.commit()
         user_id = cursor.lastrowid
@@ -259,9 +286,10 @@ def _row_to_user(row) -> dict:
         "email": row[1],
         "password_hash": row[2],
         "google_sub": row[3],
-        "name": row[4],
-        "avatar_url": row[5],
-        "created_at": datetime.fromisoformat(row[6]) if row[6] else datetime.now(),
+        "telegram_id": row[4],
+        "name": row[5],
+        "avatar_url": row[6],
+        "created_at": datetime.fromisoformat(row[7]) if row[7] else datetime.now(),
     }
 
 

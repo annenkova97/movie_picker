@@ -7,11 +7,13 @@ from backend.auth import (
     hash_password,
     verify_google_id_token,
     verify_password,
+    verify_telegram_init_data,
     _user_dict_to_model,
 )
 from backend.models import (
     AuthResponse,
     GoogleLogin,
+    TelegramWebAppLogin,
     User,
     UserCreate,
     UserLogin,
@@ -107,6 +109,46 @@ async def google_login(payload: GoogleLogin):
             claimed = await db.claim_orphan_library_for_user(user_row["id"])
             if claimed:
                 print(f"[auth] первый юзер {user_row['email']} забрал {claimed} фильмов")
+
+    return await _issue(user_row)
+
+
+@router.post("/telegram-webapp", response_model=AuthResponse)
+async def telegram_webapp_login(payload: TelegramWebAppLogin):
+    """Логин через Telegram Mini App initData.
+
+    Фронт отдаёт нам ровно ту строку, что лежит в ``window.Telegram.WebApp.initData``.
+    Мы проверяем HMAC-подпись токеном бота, и если она валидна — ищем юзера по
+    ``telegram_id`` или создаём нового (с синтетическим email вида
+    ``tg<id>@telegram.local``, у Telegram email не выдаётся).
+    """
+    data = verify_telegram_init_data(payload.init_data)
+    tg_user = data["user"]
+    telegram_id = int(tg_user["id"])
+
+    user_row = await db.get_user_by_telegram_id(telegram_id)
+    if user_row:
+        return await _issue(user_row)
+
+    # Первый в системе юзер забирает «бесхозную» библиотеку.
+    is_first_user = not await db.has_any_users()
+
+    # Telegram не отдаёт email — выдаём синтетический. Если юзер потом
+    # привяжет реальный email/Google, мы просто перепишем поле.
+    synthetic_email = f"tg{telegram_id}@telegram.local"
+    name_parts = [tg_user.get("first_name") or "", tg_user.get("last_name") or ""]
+    full_name = " ".join(p for p in name_parts if p).strip() or tg_user.get("username")
+
+    user_row = await db.create_user(
+        email=synthetic_email,
+        telegram_id=telegram_id,
+        name=full_name,
+        avatar_url=tg_user.get("photo_url"),
+    )
+    if is_first_user:
+        claimed = await db.claim_orphan_library_for_user(user_row["id"])
+        if claimed:
+            print(f"[auth] первый юзер tg:{telegram_id} забрал {claimed} фильмов")
 
     return await _issue(user_row)
 
