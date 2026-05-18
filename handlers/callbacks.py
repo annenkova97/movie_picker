@@ -21,7 +21,8 @@ async def _get_or_create_user(tg_user) -> dict:
     name_parts = [tg_user.first_name or "", tg_user.last_name or ""]
     full_name = " ".join(p for p in name_parts if p).strip() or (tg_user.username or "")
     return await db.create_user(
-        email=f"tg{telegram_id}@telegram.local",
+        # Synthetic email — example.com зарезервирован RFC 2606.
+        email=f"tg{telegram_id}@tg.example.com",
         telegram_id=telegram_id,
         name=full_name or None,
     )

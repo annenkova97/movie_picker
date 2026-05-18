@@ -135,7 +135,8 @@ async def telegram_webapp_login(payload: TelegramWebAppLogin):
 
     # Telegram не отдаёт email — выдаём синтетический. Если юзер потом
     # привяжет реальный email/Google, мы просто перепишем поле.
-    synthetic_email = f"tg{telegram_id}@telegram.local"
+    # example.com зарезервирован RFC 2606 и проходит EmailStr-валидацию.
+    synthetic_email = f"tg{telegram_id}@tg.example.com"
     name_parts = [tg_user.get("first_name") or "", tg_user.get("last_name") or ""]
     full_name = " ".join(p for p in name_parts if p).strip() or tg_user.get("username")
 
