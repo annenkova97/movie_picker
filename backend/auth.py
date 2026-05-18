@@ -1,10 +1,16 @@
-"""Аутентификация: хэш паролей, JWT, проверка Google ID-токена, зависимость FastAPI."""
+"""Аутентификация: хэш паролей, JWT, проверка Google ID-токена и Telegram WebApp initData."""
 from __future__ import annotations
 
 import bcrypt
-import jwt
+import hashlib
+import hmac
+import json
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import parse_qsl
+
+import jwt
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -13,8 +19,19 @@ from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 
 from backend import database as db
-from backend.config import JWT_SECRET, JWT_EXPIRES_DAYS, JWT_ALGORITHM, GOOGLE_CLIENT_ID
+from backend.config import (
+    JWT_SECRET,
+    JWT_EXPIRES_DAYS,
+    JWT_ALGORITHM,
+    GOOGLE_CLIENT_ID,
+    TELEGRAM_BOT_TOKEN,
+)
 from backend.models import User
+
+
+# initData считается «свежим» 24 часа — достаточно, чтобы пережить
+# короткую офлайн-сессию, но мало для серьёзного replay-attack.
+TELEGRAM_INITDATA_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 _bearer = HTTPBearer(auto_error=False)
@@ -80,6 +97,90 @@ def verify_google_id_token(token: str) -> dict:
             detail="Email в Google-аккаунте не подтверждён",
         )
     return claims
+
+
+def verify_telegram_init_data(init_data: str) -> dict:
+    """Проверяет подпись Telegram Mini App initData и возвращает payload.
+
+    Алгоритм по `docs.telegram.org/bots/webapps#validating-data-received-via-the-mini-app`:
+      1. Распарсить initData как querystring.
+      2. Извлечь `hash`, остальные пары отсортировать по ключу.
+      3. ``data_check_string = "\n".join(f"{k}={v}")``.
+      4. ``secret_key = HMAC_SHA256(key="WebAppData", msg=bot_token)``.
+      5. Сравнить ``HMAC_SHA256(secret_key, data_check_string)`` с ``hash``.
+
+    Дополнительно проверяем ``auth_date``, чтобы старые initData нельзя было
+    переиспользовать (replay).
+
+    Бросает HTTPException 401 при любой ошибке. На успех возвращает словарь
+    распарсенных полей с user-объектом в ``"user"``.
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Telegram вход не настроен (TELEGRAM_BOT_TOKEN не задан)",
+        )
+    if not init_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пустой initData",
+        )
+
+    # parse_qsl сам сделает URL-decode для значений (включая `user` с %7B и т.п.)
+    pairs = parse_qsl(init_data, keep_blank_values=True, strict_parsing=False)
+    data = dict(pairs)
+    received_hash = data.pop("hash", "")
+    if not received_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="initData без поля hash",
+        )
+
+    data_check_string = "\n".join(f"{k}={data[k]}" for k in sorted(data))
+    secret_key = hmac.new(
+        b"WebAppData", TELEGRAM_BOT_TOKEN.encode("utf-8"), hashlib.sha256,
+    ).digest()
+    expected_hash = hmac.new(
+        secret_key, data_check_string.encode("utf-8"), hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_hash, received_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверная подпись initData",
+        )
+
+    try:
+        auth_date = int(data.get("auth_date", "0"))
+    except ValueError:
+        auth_date = 0
+    if auth_date and (time.time() - auth_date) > TELEGRAM_INITDATA_MAX_AGE_SECONDS:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="initData устарел, перезайди в приложение",
+        )
+
+    user_field = data.get("user")
+    if not user_field:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="initData без поля user",
+        )
+    try:
+        user_payload = json.loads(user_field)
+    except json.JSONDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="user внутри initData — невалидный JSON",
+        )
+    if not isinstance(user_payload, dict) or "id" not in user_payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="user внутри initData без id",
+        )
+
+    data["user"] = user_payload
+    return data
 
 
 def _user_dict_to_model(row: dict) -> User:

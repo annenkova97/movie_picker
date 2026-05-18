@@ -26,6 +26,12 @@ class GoogleLogin(BaseModel):
     id_token: str
 
 
+class TelegramWebAppLogin(BaseModel):
+    # Сырая строка initData как её отдал Telegram.WebApp.initData во фронте.
+    # Подпись и user-объект мы парсим/проверяем на сервере.
+    init_data: str
+
+
 class AuthResponse(BaseModel):
     token: str
     user: User

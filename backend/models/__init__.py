@@ -18,6 +18,7 @@ from backend.models.user import (
     UserCreate,
     UserLogin,
     GoogleLogin,
+    TelegramWebAppLogin,
     AuthResponse,
 )
 
@@ -40,5 +41,6 @@ __all__ = [
     "UserCreate",
     "UserLogin",
     "GoogleLogin",
+    "TelegramWebAppLogin",
     "AuthResponse",
 ]

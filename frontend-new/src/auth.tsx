@@ -13,10 +13,24 @@ interface AuthState {
   token: string | null;
   user: AuthUser | null;
   loading: boolean;
+  // true когда страница открыта внутри Telegram (Mini App) — фронт прячет
+  // экран логина, потому что мы умеем войти автоматически по initData.
+  isTelegram: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   googleLogin: (idToken: string) => Promise<void>;
   logout: () => void;
+}
+
+function getTelegramInitData(): string | null {
+  // Скрипт telegram-web-app.js, подгруженный в index.html, выставляет
+  // window.Telegram.WebApp.initData непустой строкой только когда страница
+  // реально открыта из Telegram (бот → Mini App).
+  const tg = (window as { Telegram?: { WebApp?: { initData?: string; ready?: () => void; expand?: () => void } } }).Telegram?.WebApp;
+  if (!tg || !tg.initData) return null;
+  // Сигналим Telegram, что приложение готово, и раскрываем на всю высоту.
+  try { tg.ready?.(); tg.expand?.(); } catch {}
+  return tg.initData;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -71,7 +85,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
   });
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [loading, setLoading] = useState<boolean>(!!token);
+  // Внутри Telegram даже без сохранённого токена покажем спиннер, пока
+  // не дойдёт auto-login по initData — иначе мелькнёт экран регистрации.
+  const isTelegram = typeof window !== 'undefined' && !!getTelegramInitData();
+  const [loading, setLoading] = useState<boolean>(!!token || isTelegram);
 
   // keep the module-level token in sync so api.ts can read it
   useEffect(() => { currentToken = token; }, [token]);
@@ -86,13 +103,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     registerUnauthorizedHandler(clear);
   }, [clear]);
 
-  // hydrate /auth/me on mount if we have a token
+  const applyAuth = useCallback((res: AuthResponse) => {
+    setCurrentToken(res.token);
+    setToken(res.token);
+    setUser(res.user);
+  }, []);
+
+  // Initial auth — пробуем сначала Telegram WebApp (если открыты из Telegram),
+  // потом сохранённый токен из localStorage. Запускается один раз на маунт.
   useEffect(() => {
-    if (!token) { setLoading(false); return; }
     let cancelled = false;
     (async () => {
+      const tgInitData = getTelegramInitData();
+      if (tgInitData) {
+        try {
+          const res = await postJson<AuthResponse>('/auth/telegram-webapp', { init_data: tgInitData });
+          if (!cancelled) {
+            applyAuth(res);
+            setLoading(false);
+          }
+          return;
+        } catch (e) {
+          // initData протух или подпись битая — упадём в обычный flow ниже.
+          console.warn('[auth] Telegram WebApp login failed:', e);
+        }
+      }
+      // Hydrate /auth/me if we have a token from localStorage
+      const storedToken = currentToken;
+      if (!storedToken) {
+        if (!cancelled) setLoading(false);
+        return;
+      }
       try {
-        const res = await fetch('/auth/me', { headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch('/auth/me', { headers: { Authorization: `Bearer ${storedToken}` } });
         if (!res.ok) throw new Error(String(res.status));
         const data: AuthUser = await res.json();
         if (!cancelled) setUser(data);
@@ -103,12 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [token, clear]);
-
-  const applyAuth = useCallback((res: AuthResponse) => {
-    setCurrentToken(res.token);
-    setToken(res.token);
-    setUser(res.user);
+    // Только один раз на маунт — повторные re-runs не нужны.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -129,8 +168,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => { clear(); }, [clear]);
 
   const value = useMemo<AuthState>(() => ({
-    token, user, loading, login, register, googleLogin, logout,
-  }), [token, user, loading, login, register, googleLogin, logout]);
+    token, user, loading, isTelegram, login, register, googleLogin, logout,
+  }), [token, user, loading, isTelegram, login, register, googleLogin, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

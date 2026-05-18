@@ -2,6 +2,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 from backend import database as db
+from handlers.callbacks import _get_or_create_user
 
 
 def _format_movie(movie) -> str:
@@ -37,7 +38,8 @@ def _movie_keyboard(movie) -> InlineKeyboardMarkup:
 
 async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик /list — непросмотренные фильмы"""
-    movies = await db.get_all_movies(is_watched=False)
+    user_row = await _get_or_create_user(update.effective_user)
+    movies = await db.get_all_movies(user_id=user_row["id"], is_watched=False)
 
     if not movies:
         await update.message.reply_text(
@@ -70,7 +72,8 @@ async def list_callbacks(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def watched_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик /watched — просмотренные фильмы"""
-    movies = await db.get_all_movies(is_watched=True)
+    user_row = await _get_or_create_user(update.effective_user)
+    movies = await db.get_all_movies(user_id=user_row["id"], is_watched=True)
 
     if not movies:
         await update.message.reply_text("Нет просмотренных фильмов.")

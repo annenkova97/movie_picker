@@ -31,7 +31,7 @@ function useIsCompact(threshold: number): boolean {
 }
 
 export function TopBar({ th, lang, setLang, theme, setTheme, onSignInClick }: Props) {
-  const { user, logout } = useAuth();
+  const { user, logout, isTelegram } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const compact = useIsCompact(COMPACT_BREAKPOINT);
@@ -96,7 +96,7 @@ export function TopBar({ th, lang, setLang, theme, setTheme, onSignInClick }: Pr
           }}>
           {theme === 'light' ? '☾' : '☀'}
         </button>
-        {!user && onSignInClick && (
+        {!user && !isTelegram && onSignInClick && (
           <button
             onClick={onSignInClick}
             style={{

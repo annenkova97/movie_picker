@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes
 from backend import database as db
 from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
+from handlers.callbacks import _get_or_create_user
 
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -33,11 +34,14 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    user_row = await _get_or_create_user(update.effective_user)
+    user_id = user_row["id"]
+
     # Проверяем дубликат
-    existing = await db.get_movie_by_imdb_id(movie_base.imdb_id)
+    existing = await db.get_user_movie_by_imdb_id(movie_base.imdb_id, user_id)
     if existing:
         await update.message.reply_text(
-            f"«{existing.title}» уже есть в списке."
+            f"«{existing.title}» уже есть в твоём списке."
         )
         return
 
@@ -52,7 +56,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     # Сохраняем
-    movie = await db.add_movie(movie_base, source="personal")
+    movie = await db.add_movie(movie_base, user_id=user_id, source="telegram")
 
     rating = f" | IMDb {movie.imdb_rating}" if movie.imdb_rating else ""
     year = f" ({movie.year})" if movie.year else ""
