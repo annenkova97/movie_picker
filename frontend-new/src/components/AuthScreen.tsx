@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../auth';
 import type { Lang } from '../i18n';
 import { T } from '../i18n';
 import type { Theme } from '../theme';
+import { TelegramLoginButton } from './TelegramLoginButton';
+import type { TelegramWidgetUser } from './TelegramLoginButton';
 
 interface Props {
   th: Theme;
@@ -20,15 +22,42 @@ interface Props {
  * the close affordance is hidden (used during forced re-auth flows, if any).
  */
 export function AuthScreen({ th, lang, initialMode = 'login', onClose }: Props) {
-  const { login, register, googleLogin } = useAuth();
+  const { login, register, googleLogin, telegramWidgetLogin } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [telegramBot, setTelegramBot] = useState<string | null>(null);
 
   const googleClientId = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) || '';
+
+  // Один раз дёргаем username бота — фронт сам узнаёт его, не нужно дублировать в env.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/auth/telegram-bot-info')
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: { username?: string; enabled?: boolean } | null) => {
+        if (!cancelled && data?.enabled && data.username) {
+          setTelegramBot(data.username);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const onTelegramAuth = useCallback(async (user: TelegramWidgetUser) => {
+    setErr(null); setBusy(true);
+    try {
+      await telegramWidgetLogin(user as unknown as Record<string, unknown>);
+      onClose?.();
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : String(ex));
+    } finally {
+      setBusy(false);
+    }
+  }, [telegramWidgetLogin, onClose]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -173,6 +202,15 @@ export function AuthScreen({ th, lang, initialMode = 'login', onClose }: Props) 
           <div style={{ fontSize: 11, color: th.ink3, textTransform: 'uppercase', letterSpacing: 0.5 }}>{T.authOr[lang]}</div>
           <div style={{ flex: 1, height: 1, background: th.line }} />
         </div>
+
+        {telegramBot && (
+          <div style={{ marginBottom: 10 }}>
+            <TelegramLoginButton
+              botUsername={telegramBot}
+              onAuth={onTelegramAuth}
+            />
+          </div>
+        )}
 
         {googleClientId ? (
           <div style={{ display: 'flex', justifyContent: 'center' }}>

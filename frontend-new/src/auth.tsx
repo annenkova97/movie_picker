@@ -19,6 +19,9 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   googleLogin: (idToken: string) => Promise<void>;
+  // Логин через Telegram Login Widget — рендерится на внешних сайтах,
+  // фронт получает подписанный payload от Telegram и шлёт его сюда.
+  telegramWidgetLogin: (widgetPayload: Record<string, unknown>) => Promise<void>;
   logout: () => void;
 }
 
@@ -165,11 +168,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     applyAuth(res);
   }, [applyAuth]);
 
+  const telegramWidgetLogin = useCallback(async (widgetPayload: Record<string, unknown>) => {
+    const res = await postJson<AuthResponse>('/auth/telegram-widget', widgetPayload);
+    applyAuth(res);
+  }, [applyAuth]);
+
   const logout = useCallback(() => { clear(); }, [clear]);
 
   const value = useMemo<AuthState>(() => ({
-    token, user, loading, isTelegram, login, register, googleLogin, logout,
-  }), [token, user, loading, isTelegram, login, register, googleLogin, logout]);
+    token, user, loading, isTelegram, login, register, googleLogin, telegramWidgetLogin, logout,
+  }), [token, user, loading, isTelegram, login, register, googleLogin, telegramWidgetLogin, logout]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

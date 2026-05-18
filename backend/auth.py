@@ -183,6 +183,79 @@ def verify_telegram_init_data(init_data: str) -> dict:
     return data
 
 
+def verify_telegram_login_widget(payload: dict) -> dict:
+    """Проверяет подпись данных от Telegram Login Widget и возвращает payload.
+
+    Отличается от ``verify_telegram_init_data``! Это для **внешнего сайта**, где
+    юзер нажал кнопку «Login with Telegram» и Telegram редиректнул с полями:
+      id, first_name, last_name, username, photo_url, auth_date, hash
+
+    Алгоритм по `core.telegram.org/widgets/login#checking-authorization`:
+      1. Все поля кроме ``hash``, отсортированы по ключу.
+      2. ``data_check_string = "\n".join(f"{k}={v}")``.
+      3. ``secret_key = SHA256(bot_token)`` (НЕ HMAC, обычный SHA256!).
+      4. Сравнить ``HMAC_SHA256(secret_key, data_check_string)`` с ``hash``.
+
+    Бросает HTTPException 401 при ошибке. На успех — возвращает payload
+    с приведёнными типами (id как int, auth_date как int).
+    """
+    if not TELEGRAM_BOT_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail="Telegram вход не настроен (TELEGRAM_BOT_TOKEN не задан)",
+        )
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пустой payload от Telegram",
+        )
+
+    data = {k: str(v) for k, v in payload.items() if v is not None}
+    received_hash = data.pop("hash", "")
+    if not received_hash:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Payload без поля hash",
+        )
+
+    data_check_string = "\n".join(f"{k}={data[k]}" for k in sorted(data))
+    secret_key = hashlib.sha256(TELEGRAM_BOT_TOKEN.encode("utf-8")).digest()
+    expected_hash = hmac.new(
+        secret_key, data_check_string.encode("utf-8"), hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_hash, received_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверная подпись Telegram Login Widget",
+        )
+
+    try:
+        auth_date = int(data.get("auth_date", "0"))
+    except ValueError:
+        auth_date = 0
+    if auth_date and (time.time() - auth_date) > TELEGRAM_INITDATA_MAX_AGE_SECONDS:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Авторизация Telegram устарела, попробуй ещё раз",
+        )
+
+    if "id" not in data:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Payload без поля id",
+        )
+
+    return {
+        "id": int(data["id"]),
+        "first_name": data.get("first_name"),
+        "last_name": data.get("last_name"),
+        "username": data.get("username"),
+        "photo_url": data.get("photo_url"),
+        "auth_date": auth_date,
+    }
+
+
 def _user_dict_to_model(row: dict) -> User:
     return User(
         id=row["id"],

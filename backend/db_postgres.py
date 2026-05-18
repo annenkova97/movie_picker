@@ -230,6 +230,37 @@ async def create_user(
     return await get_user_by_id(user_id)
 
 
+async def merge_telegram_user_into(source_user_id: int, target_user_id: int) -> None:
+    """См. docstring в db_sqlite.merge_telegram_user_into — поведение идентичное."""
+    if source_user_id == target_user_id:
+        return
+    async with _pool.acquire() as conn:
+        async with conn.transaction():
+            source_tg_id = await conn.fetchval(
+                "SELECT telegram_id FROM users WHERE id = $1", source_user_id
+            )
+            # Снимаем фильмы source'а, уже лежащие на полке у target (UNIQUE по imdb_id).
+            await conn.execute(
+                "DELETE FROM movies WHERE user_id = $1 AND imdb_id IN "
+                "(SELECT imdb_id FROM movies WHERE user_id = $2)",
+                source_user_id, target_user_id,
+            )
+            await conn.execute(
+                "UPDATE movies SET user_id = $1 WHERE user_id = $2",
+                target_user_id, source_user_id,
+            )
+            if source_tg_id is not None:
+                await conn.execute(
+                    "UPDATE users SET telegram_id = NULL WHERE id = $1",
+                    source_user_id,
+                )
+                await conn.execute(
+                    "UPDATE users SET telegram_id = $1 WHERE id = $2",
+                    source_tg_id, target_user_id,
+                )
+            await conn.execute("DELETE FROM users WHERE id = $1", source_user_id)
+
+
 async def attach_google_sub(
     user_id: int, google_sub: str, avatar_url: Optional[str]
 ) -> None:

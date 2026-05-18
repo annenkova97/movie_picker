@@ -1,6 +1,8 @@
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from backend import database as db
+from backend.config import TELEGRAM_BOT_TOKEN
 from backend.auth import (
     create_access_token,
     get_current_user,
@@ -8,12 +10,14 @@ from backend.auth import (
     verify_google_id_token,
     verify_password,
     verify_telegram_init_data,
+    verify_telegram_login_widget,
     _user_dict_to_model,
 )
 from backend.models import (
     AuthResponse,
     GoogleLogin,
     TelegramWebAppLogin,
+    TelegramWidgetLogin,
     User,
     UserCreate,
     UserLogin,
@@ -21,6 +25,29 @@ from backend.models import (
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+# Кэш юзернейма бота — вытаскиваем один раз через /getMe, дальше отдаём из памяти.
+_bot_username_cache: dict[str, str | None] = {}
+
+
+async def _get_bot_username() -> str | None:
+    if "username" in _bot_username_cache:
+        return _bot_username_cache["username"]
+    if not TELEGRAM_BOT_TOKEN:
+        _bot_username_cache["username"] = None
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.get(
+                f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getMe"
+            )
+        data = r.json() if r.status_code == 200 else {}
+        username = data.get("result", {}).get("username") if data.get("ok") else None
+    except Exception:
+        username = None
+    _bot_username_cache["username"] = username
+    return username
 
 
 async def _issue(user_row: dict) -> AuthResponse:
@@ -113,28 +140,22 @@ async def google_login(payload: GoogleLogin):
     return await _issue(user_row)
 
 
-@router.post("/telegram-webapp", response_model=AuthResponse)
-async def telegram_webapp_login(payload: TelegramWebAppLogin):
-    """Логин через Telegram Mini App initData.
+async def _issue_for_telegram_user(tg_user: dict) -> AuthResponse:
+    """Общий хвост для /telegram-webapp и /telegram-widget.
 
-    Фронт отдаёт нам ровно ту строку, что лежит в ``window.Telegram.WebApp.initData``.
-    Мы проверяем HMAC-подпись токеном бота, и если она валидна — ищем юзера по
-    ``telegram_id`` или создаём нового (с синтетическим email вида
-    ``tg<id>@telegram.local``, у Telegram email не выдаётся).
+    Принимает уже проверенный TG-payload (id обязателен, остальное — best-effort)
+    и либо логинит существующего юзера, либо создаёт нового с синтетическим email.
     """
-    data = verify_telegram_init_data(payload.init_data)
-    tg_user = data["user"]
     telegram_id = int(tg_user["id"])
 
     user_row = await db.get_user_by_telegram_id(telegram_id)
     if user_row:
         return await _issue(user_row)
 
-    # Первый в системе юзер забирает «бесхозную» библиотеку.
+    # Первый в системе юзер забирает «бесхозную» библиотеку (historical 62 movies).
     is_first_user = not await db.has_any_users()
 
-    # Telegram не отдаёт email — выдаём синтетический. Если юзер потом
-    # привяжет реальный email/Google, мы просто перепишем поле.
+    # Telegram не отдаёт email — выдаём синтетический.
     # example.com зарезервирован RFC 2606 и проходит EmailStr-валидацию.
     synthetic_email = f"tg{telegram_id}@tg.example.com"
     name_parts = [tg_user.get("first_name") or "", tg_user.get("last_name") or ""]
@@ -152,6 +173,35 @@ async def telegram_webapp_login(payload: TelegramWebAppLogin):
             print(f"[auth] первый юзер tg:{telegram_id} забрал {claimed} фильмов")
 
     return await _issue(user_row)
+
+
+@router.post("/telegram-webapp", response_model=AuthResponse)
+async def telegram_webapp_login(payload: TelegramWebAppLogin):
+    """Логин через Telegram Mini App initData (юзер открыл наш Mini App в Telegram)."""
+    data = verify_telegram_init_data(payload.init_data)
+    return await _issue_for_telegram_user(data["user"])
+
+
+@router.post("/telegram-widget", response_model=AuthResponse)
+async def telegram_widget_login(payload: TelegramWidgetLogin):
+    """Логин через Telegram Login Widget (юзер на внешнем сайте нажал «Войти через Telegram»).
+
+    Подпись здесь считается по-другому (см. verify_telegram_login_widget), но
+    конечный flow тот же: находим/создаём юзера по telegram_id и выдаём JWT.
+    """
+    tg_user = verify_telegram_login_widget(payload.model_dump())
+    return await _issue_for_telegram_user(tg_user)
+
+
+@router.get("/telegram-bot-info")
+async def telegram_bot_info():
+    """Отдаёт юзернейм бота, нужный фронту для рендера Telegram Login Widget.
+
+    Кнопка-виджет создаётся скриптом с ``data-telegram-login="<username>"``;
+    мы достаём username из /getMe, чтобы не дублировать его в env-переменных фронта.
+    """
+    username = await _get_bot_username()
+    return {"username": username, "enabled": bool(username)}
 
 
 @router.get("/me", response_model=User)
