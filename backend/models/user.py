@@ -32,6 +32,21 @@ class TelegramWebAppLogin(BaseModel):
     init_data: str
 
 
+class TelegramWidgetLogin(BaseModel):
+    """Поля, которые отдаёт Telegram Login Widget в onauth-колбэке.
+
+    Подпись (``hash``) и timestamp (``auth_date``) обязательны; остальное —
+    то, что Telegram прислал, может варьироваться (нет username, нет фото).
+    """
+    id: int
+    auth_date: int
+    hash: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    username: Optional[str] = None
+    photo_url: Optional[str] = None
+
+
 class AuthResponse(BaseModel):
     token: str
     user: User

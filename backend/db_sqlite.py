@@ -269,6 +269,58 @@ async def create_user(
     return await get_user_by_id(user_id)
 
 
+async def merge_telegram_user_into(source_user_id: int, target_user_id: int) -> None:
+    """Привязывает Telegram-аккаунт юзера ``source_user_id`` к ``target_user_id``.
+
+    Используется когда юзер открыл Mini App (создан синтетический Telegram-аккаунт),
+    а потом ввёл свой email/пароль чтобы привязать к существующему. Логика:
+      1. Переносим все фильмы source → target (с фильтрацией дубликатов по imdb_id).
+      2. Снимаем ``telegram_id`` с source, ставим на target.
+      3. Удаляем source-юзера (после миграции он пустой).
+    Всё в одной транзакции, чтобы не остаться с полудохлым состоянием.
+    """
+    if source_user_id == target_user_id:
+        return
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("BEGIN")
+        try:
+            # Прочитаем telegram_id source'а ДО любых апдейтов.
+            async with db.execute(
+                "SELECT telegram_id FROM users WHERE id = ?", (source_user_id,)
+            ) as cur:
+                row = await cur.fetchone()
+                source_tg_id = row[0] if row else None
+
+            # Удаляем у source те фильмы, что уже есть на полке у target — иначе
+            # UNIQUE (user_id, imdb_id) сломает UPDATE при перевешивании.
+            await db.execute(
+                "DELETE FROM movies WHERE user_id = ? AND imdb_id IN "
+                "(SELECT imdb_id FROM movies WHERE user_id = ?)",
+                (source_user_id, target_user_id),
+            )
+            # Перевешиваем оставшиеся на target.
+            await db.execute(
+                "UPDATE movies SET user_id = ? WHERE user_id = ?",
+                (target_user_id, source_user_id),
+            )
+            # Переезд telegram_id: сначала снимаем UNIQUE с source, потом ставим на target.
+            if source_tg_id is not None:
+                await db.execute(
+                    "UPDATE users SET telegram_id = NULL WHERE id = ?",
+                    (source_user_id,),
+                )
+                await db.execute(
+                    "UPDATE users SET telegram_id = ? WHERE id = ?",
+                    (source_tg_id, target_user_id),
+                )
+            # Source стал пустым tg-аккаунтом без id, удаляем.
+            await db.execute("DELETE FROM users WHERE id = ?", (source_user_id,))
+            await db.commit()
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise
+
+
 async def attach_google_sub(user_id: int, google_sub: str, avatar_url: Optional[str]) -> None:
     """Привязать Google-аккаунт к уже существующему email-аккаунту."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
