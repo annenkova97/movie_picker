@@ -1,0 +1,105 @@
+/* Lentochka — global stylesheet.
+   Loads design tokens (theme.css) and sets baseline that the new design system relies on. */
+
+@import "./theme.css";
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-wine-deep);
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  min-height: 100vh;
+}
+
+button {
+  font-family: inherit;
+}
+
+input, textarea {
+  font-family: inherit;
+}
+
+input::placeholder {
+  color: var(--color-cream-soft);
+  opacity: 0.55;
+}
+
+/* Reduce motion users */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Shared full-screen modal scaffold used by Tonight/Watchlist screens. */
+.lt-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--color-wine-deep);
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Watchlist header — shared between Main and Empty screens. */
+.wl-screen { position: relative; }
+
+.wl-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  max-width: 390px;
+  margin: 0 auto;
+  padding: 56px 20px 0;
+  gap: 12px;
+}
+
+.wl-greeting {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: rgba(233, 217, 167, 0.7);
+  margin-bottom: 4px;
+}
+
+.wl-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 36px;
+  letter-spacing: -0.5px;
+  color: var(--color-cream);
+  margin: 0;
+}
+
+.wl-settings {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-wine);
+  border: 1px solid var(--wine-light-border);
+  color: var(--color-cream);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin-top: 8px;
+  flex: 0 0 auto;
+  transition: background 0.15s ease;
+}
+.wl-settings:hover { background: var(--color-wine-light); }
