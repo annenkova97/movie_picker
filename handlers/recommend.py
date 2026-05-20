@@ -9,8 +9,8 @@ async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик /recommend <запрос>"""
     if not context.args:
         await update.message.reply_text(
-            "Напиши, что хочешь посмотреть.\n"
-            "Пример: /recommend что-то лёгкое и смешное"
+            "Напиши, что хочется посмотреть.\n"
+            "Например: /recommend что-то лёгкое и смешное"
         )
         return
 
@@ -32,12 +32,12 @@ async def _do_recommend(update: Update, query: str):
 
     if not movies:
         await update.message.reply_text(
-            "В списке пока нет непросмотренных фильмов. "
-            "Добавь фильмы через /search <название>"
+            "В списке пока нет непросмотренных. "
+            "Добавь через /search или скинь Reel."
         )
         return
 
-    await update.message.reply_text(f"Подбираю фильмы по запросу «{query}»...")
+    await update.message.reply_text(f"Подбираю под «{query}»...")
 
     try:
         recommended_ids, explanation = await llm_service.recommend_movies(
@@ -46,13 +46,13 @@ async def _do_recommend(update: Update, query: str):
     except Exception as e:
         print(f"Ошибка рекомендаций: {type(e).__name__}: {e}")
         await update.message.reply_text(
-            f"Ошибка: {type(e).__name__}: {e}"
+            f"Не получилось: {type(e).__name__}: {e}"
         )
         return
 
     if not recommended_ids:
         await update.message.reply_text(
-            f"По запросу «{query}» ничего не нашлось в твоём списке.\n\n"
+            f"Под «{query}» ничего не нашла в твоём списке.\n\n"
             f"{explanation}"
         )
         return
@@ -63,15 +63,15 @@ async def _do_recommend(update: Update, query: str):
     recommended.sort(key=lambda m: id_to_order.get(m.id, 999))
 
     # Отправляем результат
-    text = f"По запросу «{query}» рекомендую:\n\n"
+    text = f"Под «{query}»:\n\n"
 
     for i, movie in enumerate(recommended, 1):
-        rating = f" | IMDb {movie.imdb_rating}" if movie.imdb_rating else ""
+        rating = f"  ★ {movie.imdb_rating}" if movie.imdb_rating else ""
         year = f" ({movie.year})" if movie.year else ""
         genres = f" — {', '.join(movie.genres)}" if movie.genres else ""
         text += f"{i}. *{movie.title}*{year}{rating}{genres}\n"
         if movie.description:
-            text += f"   _{movie.description}_\n"
+            text += f"   _«{movie.description}»_\n"
         text += "\n"
 
     text += f"💡 {explanation}"

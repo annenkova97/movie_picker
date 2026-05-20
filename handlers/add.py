@@ -29,8 +29,8 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not movie_base:
         await update.message.reply_text(
-            f"Фильм «{query}» не найден в OMDB. "
-            "Попробуй на английском или используй /search для поиска."
+            f"Не нашла «{query}» в базе. "
+            "Попробуй на английском или /search."
         )
         return
 
@@ -41,7 +41,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     existing = await db.get_user_movie_by_imdb_id(movie_base.imdb_id, user_id)
     if existing:
         await update.message.reply_text(
-            f"«{existing.title}» уже есть в твоём списке."
+            f"«{existing.title}» уже в твоём списке."
         )
         return
 
@@ -58,12 +58,12 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем
     movie = await db.add_movie(movie_base, user_id=user_id, source="telegram")
 
-    rating = f" | IMDb {movie.imdb_rating}" if movie.imdb_rating else ""
+    rating = f"  ★ {movie.imdb_rating}" if movie.imdb_rating else ""
     year = f" ({movie.year})" if movie.year else ""
     genres = f"\n{', '.join(movie.genres)}" if movie.genres else ""
-    desc = f"\n_{movie.description}_" if movie.description else ""
+    desc = f"\n_«{movie.description}»_" if movie.description else ""
 
     await update.message.reply_text(
-        f"Добавлен: *{movie.title}*{year}{rating}{genres}{desc}",
+        f"Сохранила: *{movie.title}*{year}{rating}{genres}{desc}",
         parse_mode="Markdown",
     )

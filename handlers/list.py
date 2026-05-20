@@ -43,12 +43,12 @@ async def list_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not movies:
         await update.message.reply_text(
-            "Список пуст. Добавь фильмы через /search <название>"
+            "Список пока пустой. Найди фильм через /search или скинь Reel."
         )
         return
 
     await update.message.reply_text(
-        f"Фильмы к просмотру ({len(movies)}):"
+        f"В списке ({len(movies)}):"
     )
 
     # Показываем по 5 фильмов
@@ -76,11 +76,11 @@ async def watched_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     movies = await db.get_all_movies(user_id=user_row["id"], is_watched=True)
 
     if not movies:
-        await update.message.reply_text("Нет просмотренных фильмов.")
+        await update.message.reply_text("Просмотренных пока нет.")
         return
 
     await update.message.reply_text(
-        f"Просмотренные фильмы ({len(movies)}):"
+        f"Просмотрено ({len(movies)}):"
     )
 
     for movie in movies[:10]:

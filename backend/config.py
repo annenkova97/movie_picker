@@ -9,6 +9,11 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
+# Public URL of the deployed Mini-App (Telegram web_app button target).
+# Optional: when unset, the "Открыть в Lentochka" inline button after save
+# is omitted, and users open the Mini-App via BotFather's menu button.
+MINI_APP_URL = os.getenv("MINI_APP_URL", "").strip()
+
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-only-insecure-secret-change-me")
 JWT_EXPIRES_DAYS = int(os.getenv("JWT_EXPIRES_DAYS", "30"))
 JWT_ALGORITHM = "HS256"

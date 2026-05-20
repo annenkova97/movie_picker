@@ -20,17 +20,17 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not results:
         await update.message.reply_text(
-            f"По запросу «{query}» ничего не найдено. "
+            f"По «{query}» ничего не нашла. "
             "Попробуй другое название (лучше на английском)."
         )
         return
 
-    # Показываем до 5 результатов с кнопками «Добавить»
+    # Показываем до 5 результатов с кнопками «+ Сохранить»
     for item in results[:5]:
         text = f"*{item.title}* ({item.year})"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(
-                "Добавить в список",
+                "+ Сохранить",
                 callback_data=f"add:{item.imdb_id}"
             )]
         ])
