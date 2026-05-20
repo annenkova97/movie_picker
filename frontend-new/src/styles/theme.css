@@ -1,0 +1,207 @@
+/* ============================================================
+   Lentochka — Design Tokens
+   Wine + Cream + Gold palette, Fraunces + Inter typography.
+   Drop-in CSS custom properties for any framework.
+
+   See design/DESIGN.md for full specification.
+   ============================================================ */
+
+:root {
+  /* ----- Color: Brand (primary, dark mode) ----- */
+  --color-wine-deep: #2A1830;   /* page background */
+  --color-wine: #3D2442;        /* surface, cards */
+  --color-wine-light: #5A3760;  /* borders, hover, pressed */
+  --color-cream: #F5E6B8;       /* primary text on dark / light surface */
+  --color-cream-soft: #E9D9A7;  /* secondary text, muted */
+  --color-gold: #E4B15C;        /* accent — CTA, active state, eyebrow */
+  --color-gold-dark: #C8964A;   /* accent hover, pressed */
+
+  /* ----- Color: Telegram chrome (preserve native look) ----- */
+  --tg-chat-bg: #17171B;
+  --tg-header-bg: #1F1F23;
+  --tg-border: #2A2A2F;
+  --tg-input-bg: #2A2A2F;
+  --tg-user-bubble: #1E3B58;
+  --tg-blue: #4D9CE0;
+  --tg-blue-dim: #8FB4D8;
+  --tg-text-dim: #8A8B92;
+
+  /* ----- Color: Semantic alpha overlays ----- */
+  --gold-tint-strong: rgba(228, 177, 92, 0.22);  /* active chip bg */
+  --gold-tint-medium: rgba(228, 177, 92, 0.18);  /* tint on subtle surfaces */
+  --gold-tint-light:  rgba(228, 177, 92, 0.10);  /* breadcrumb chip bg */
+  --gold-tint-subtle: rgba(228, 177, 92, 0.06);  /* selected card bg */
+  --gold-border:      rgba(228, 177, 92, 0.50);  /* active border */
+  --gold-border-strong: rgba(228, 177, 92, 0.60); /* selected border */
+
+  --wine-light-border: rgba(90, 55, 96, 0.40);   /* default border */
+  --wine-light-divider: rgba(90, 55, 96, 0.45);  /* divider lines */
+
+  /* ----- Typography: Family ----- */
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
+
+  /* ----- Typography: Sizes ----- */
+  --text-display: 60px;
+  --text-h1: 40px;
+  --text-h2: 30px;
+  --text-h3: 20px;
+  --text-body-lg: 18px;
+  --text-body: 16px;
+  --text-body-strong: 14px;
+  --text-caption: 13px;
+  --text-meta: 12px;
+  --text-micro: 11px;
+  --text-eyebrow: 12px;
+  --text-button: 16px;
+  --text-award-badge: 8.5px;
+
+  /* ----- Typography: Line heights (matched to size) ----- */
+  --leading-display: 70px;
+  --leading-h1: 46px;
+  --leading-h2: 36px;
+  --leading-rationale: 20px;
+  --leading-body: 22px;
+
+  /* ----- Typography: Letter spacing ----- */
+  --tracking-display: -2px;
+  --tracking-h1: -1.5px;
+  --tracking-h2: -0.5px;
+  --tracking-eyebrow: 2.8px;
+  --tracking-eyebrow-tight: 2px;
+  --tracking-award: 1px;
+  --tracking-card-title: 1.5px;
+
+  /* ----- Spacing ----- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 14px;
+  --space-5: 16px;
+  --space-6: 18px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+  --space-12: 56px;
+  --space-16: 80px;
+
+  /* ----- Radii ----- */
+  --radius-xs: 4px;       /* award badges, kinopoisk pill */
+  --radius-sm: 8px;       /* mini posters */
+  --radius-md: 14px;      /* Telegram bubble */
+  --radius-lg: 16px;      /* film card posters */
+  --radius-xl: 20px;      /* film/time cards, hero cards */
+  --radius-2xl: 22px;     /* mood cards */
+  --radius-pill: 28px;    /* CTA buttons */
+  --radius-circle: 50%;   /* avatars */
+
+  /* ----- Heights (common) ----- */
+  --h-button: 56px;
+  --h-chip: 32px;
+  --h-chip-sm: 28px;
+  --h-mood-card: 130px;
+  --h-time-card: 88px;
+  --h-tonight-cta: 96px;
+  --h-film-result-card: 152px;
+  --h-input-bar: 56px;
+  --h-chat-header: 56px;
+
+  /* ----- Layout ----- */
+  --frame-mobile-w: 390px;
+  --frame-mobile-h: 844px;
+  --content-edge-padding: 20px;  /* horizontal page padding */
+  --content-content-w: 350px;     /* 390 - 2 * 20 */
+}
+
+/* ============================================================
+   Light mode (web landing) — invert
+   ============================================================ */
+
+[data-theme="light"] {
+  --color-wine-deep: #FAF6EE;   /* cream as bg */
+  --color-wine: #F5E6B8;        /* slightly darker cream as surface */
+  --color-wine-light: #E5C9A0;  /* warm beige border */
+  --color-cream: #2A1830;       /* wine deep as text */
+  --color-cream-soft: #5A3760;  /* wine light as secondary */
+  /* gold stays the same */
+}
+
+/* ============================================================
+   Type role helpers — apply to elements directly
+   ============================================================ */
+
+.t-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-display);
+  line-height: var(--leading-display);
+  letter-spacing: var(--tracking-display);
+  color: var(--color-cream);
+}
+
+.t-h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-h1);
+  line-height: var(--leading-h1);
+  letter-spacing: var(--tracking-h1);
+  color: var(--color-cream);
+}
+
+.t-h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-h2);
+  line-height: var(--leading-h2);
+  letter-spacing: var(--tracking-h2);
+  color: var(--color-cream);
+}
+
+.t-rationale {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--text-body-strong);
+  line-height: var(--leading-rationale);
+  color: var(--color-cream-soft);
+}
+
+.t-eyebrow {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-eyebrow);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--color-gold);
+}
+
+.t-body-lg {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-body-lg);
+  color: var(--color-cream);
+}
+
+.t-body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--color-cream-soft);
+}
+
+.t-meta {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--text-meta);
+  color: var(--color-cream-soft);
+  opacity: 0.6;
+}
+
+.t-button {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-button);
+}
