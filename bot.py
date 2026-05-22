@@ -18,9 +18,10 @@ from handlers.start import start_command, help_command
 from handlers.search import search_command
 from handlers.add import add_command
 from handlers.list import list_command, watched_command
-from handlers.recommend import recommend_command, recommend_handler
+from handlers.recommend import recommend_command, text_handler
 from handlers.callbacks import callback_handler
 from handlers.instagram import instagram_handler
+from handlers.forward import forward_handler
 
 
 async def post_init(application):
@@ -50,15 +51,23 @@ def main():
     app.add_handler(CallbackQueryHandler(callback_handler))
 
     # Instagram Reels → извлечение фильмов
+    # (ловим раньше FORWARDED — пересланный Reel тоже сюда)
     app.add_handler(MessageHandler(
         filters.Regex(r"https?://(www\.)?instagram\.com/(reel|reels)/"),
         instagram_handler,
     ))
 
-    # Свободный текст → рекомендации
+    # Пересланные посты из TG-каналов: текст или фото → ищем фильмы
     app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND,
-        recommend_handler,
+        filters.FORWARDED & (filters.TEXT | filters.PHOTO | filters.CAPTION),
+        forward_handler,
+    ))
+
+    # Свободный текст → сначала поиск по OMDB, потом подбор из библиотеки.
+    # Пересланные сообщения уже отработаны выше — исключаем их фильтром.
+    app.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED,
+        text_handler,
     ))
 
     print("Бот запущен! Нажми Ctrl+C для остановки.")

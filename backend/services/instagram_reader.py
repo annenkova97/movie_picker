@@ -413,11 +413,17 @@ def extract_movies(
         text += f"Transcript:\n{transcript}\n\n"
     if caption:
         text += f"Caption:\n{caption}\n\n"
-    if not text.strip():
+    # Допускаем vision-only режим: пост может быть с одной фоткой постера/кадра
+    # без текста — пусть модель опирается на изображение.
+    if not text.strip() and not use_vision_model:
         return []
 
     if use_vision_model:
-        user_content: list[dict] = [{"type": "text", "text": text}]
+        prompt_text = text or (
+            "No transcript or caption was provided. Identify the movie(s) from "
+            "the image(s) alone — poster, screenshot, scene, or actors."
+        )
+        user_content: list[dict] = [{"type": "text", "text": prompt_text}]
         for path in frame_paths:
             with open(path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
