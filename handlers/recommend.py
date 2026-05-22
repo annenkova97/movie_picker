@@ -3,10 +3,12 @@ from telegram.ext import ContextTypes
 
 from backend import database as db
 from backend.services.llm import llm_service
+from backend.services.title_search import search_title
+from handlers.search import send_search_results
 
 
 async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик /recommend <запрос>"""
+    """Обработчик /recommend <запрос> — рекомендация из библиотеки."""
     if not context.args:
         await update.message.reply_text(
             "Напиши, что хочется посмотреть.\n"
@@ -18,11 +20,26 @@ async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _do_recommend(update, query)
 
 
-async def recommend_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка свободного текста как запроса на рекомендацию"""
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Свободный текст: сначала пробуем OMDB как название фильма; если ничего
+    не нашлось — трактуем как запрос на рекомендацию из библиотеки.
+
+    Это даёт два сценария одной строкой:
+    - «Inception» / «Бойцовский клуб» → карточки фильмов с кнопкой «Добавить».
+    - «что-то лёгкое и смешное» → AI-подбор из списка пользователя.
+    """
     query = update.message.text.strip()
     if not query:
         return
+
+    results = await search_title(query)
+    if results:
+        await update.message.reply_text(
+            f"Похоже на название фильма «{query}». Вот ближайшие совпадения:"
+        )
+        await send_search_results(update.message, results[:5])
+        return
+
     await _do_recommend(update, query)
 
 

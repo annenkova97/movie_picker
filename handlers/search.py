@@ -1,7 +1,8 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Message, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-from backend.services.omdb import omdb_service
+from backend.models.movie import OMDBSearchResult
+from backend.services.title_search import search_title
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -16,7 +17,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args)
     await update.message.reply_text(f"Ищу «{query}»...")
 
-    results = await omdb_service.search_movies(query)
+    results = await search_title(query)
 
     if not results:
         await update.message.reply_text(
@@ -37,7 +38,7 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if item.poster_url:
             try:
-                await update.message.reply_photo(
+                await message.reply_photo(
                     photo=item.poster_url,
                     caption=text,
                     parse_mode="Markdown",
@@ -47,11 +48,6 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 pass
 
-        await update.message.reply_text(
-            text, parse_mode="Markdown", reply_markup=keyboard
+        await message.reply_text(
+            text, parse_mode="Markdown", reply_markup=keyboard,
         )
-
-
-async def search_inline_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка нажатия кнопки 'Добавить' из поиска — делегируется в callbacks"""
-    pass
