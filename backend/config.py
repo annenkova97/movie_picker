@@ -23,6 +23,12 @@ DATABASE_PATH = os.getenv(
 os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
 OMDB_BASE_URL = "http://www.omdbapi.com/"
 
+# TMDB используется как русскоязычный поисковик: OMDB кириллицу не понимает.
+# Ключ бесплатный, выдаётся в настройках профиля на themoviedb.org → API.
+# Если не задан — пайплайн откатывается на OMDB + LLM-перевод названия.
+TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
+TMDB_BASE_URL = "https://api.themoviedb.org/3"
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 INSTAGRAM_VIDEO_DIR = os.getenv(
     "INSTAGRAM_VIDEO_DIR",

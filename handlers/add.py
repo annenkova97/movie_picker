@@ -2,8 +2,8 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from backend import database as db
-from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
+from backend.services.title_search import find_movie_by_query
 from handlers.callbacks import _get_or_create_user
 
 
@@ -21,11 +21,9 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = " ".join(context.args).strip()
     await update.message.reply_text(f"Ищу «{query}»...")
 
-    # Определяем: IMDb ID или название
-    if query.startswith("tt") and query[2:].isdigit():
-        movie_base = await omdb_service.get_movie_by_id(query)
-    else:
-        movie_base = await omdb_service.get_movie_by_title(query)
+    # find_movie_by_query разбирается с tt-id'ами, точным match-ем и кириллицей
+    # (TMDB → OMDB → LLM-перевод) одним вызовом.
+    movie_base = await find_movie_by_query(query)
 
     if not movie_base:
         await update.message.reply_text(
