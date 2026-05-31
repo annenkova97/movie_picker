@@ -1,49 +1,46 @@
+import asyncio
+
 from telegram import Update
 from telegram.ext import ContextTypes
 
 
+# Per design §6.6: four short bubble messages introducing the value, then a
+# final prompt that tells the user how to start. Illustrations (the in-design
+# inline mini-art) are still TODO — generated PNGs will land in
+# handlers/assets/onboarding/ and be attached as photos with these as captions.
+_ONBOARDING_BUBBLES = (
+    "Привет, я Ленточка. Сохраняй фильмы откуда угодно — "
+    "Instagram, Telegram, от друзей.",
+    "Всё собирается в одном месте — с источниками, чтобы помнить, "
+    "от кого что.",
+    "Подберу под настроение на вечер — напиши, чего хочется, "
+    "или открой Mini-App.",
+    "Смотри вдвоём — без отдельных аккаунтов, общий список с кем-то близким.",
+)
+
+_ONBOARDING_FINAL = "Готова? Форвардни любой фильм 👇"
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик /start"""
-    text = (
-        "Привет! Я помогу управлять твоим списком фильмов.\n\n"
-        "Вот что я умею:\n"
-        "/add <название> — добавить фильм в список\n"
-        "/search <название> — найти фильм в OMDB\n"
-        "/list — показать мой список\n"
-        "/watched — показать просмотренные\n"
-        "/recommend <запрос> — получить рекомендацию из списка\n"
-        "/help — справка\n\n"
-        "Можно и без команд:\n"
-        "• напиши название фильма — я найду его в OMDB и предложу похожие;\n"
-        "• пришли ссылку на Instagram Reel — вытащу упомянутые фильмы;\n"
-        "• перешли пост из ТГ-канала (с текстом или фото фильма) — "
-        "разберу и предложу добавить;\n"
-        "• свободный запрос вроде «что-то лёгкое» — подберу из твоего списка."
-    )
-    await update.message.reply_text(text)
+    """Onboarding в голосе бренда — 4 короткие реплики + финальный prompt."""
+    for bubble in _ONBOARDING_BUBBLES:
+        await update.message.reply_text(bubble)
+        # Tiny pause so the bubbles arrive one-by-one, не сваливаются стопкой.
+        await asyncio.sleep(0.4)
+    await update.message.reply_text(_ONBOARDING_FINAL)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик /help"""
+    """Краткий референс команд — для тех, кто хочет CLI-режим."""
     text = (
-        "Команды:\n\n"
-        "/add <название> — добавить фильм в список\n"
-        "  Пример: /add Inception\n"
-        "  Пример: /add tt0468569\n\n"
-        "/search <название> — поиск фильма по названию\n"
-        "  Пример: /search Inception\n\n"
-        "/list — все фильмы к просмотру\n"
-        "/watched — просмотренные фильмы\n\n"
-        "/recommend <запрос> — AI-рекомендация из твоего списка\n"
-        "  Примеры:\n"
-        "  /recommend что-то лёгкое\n"
-        "  /recommend драма с Ди Каприо\n"
-        "  /recommend триллер, но не страшный\n\n"
-        "Без команд тоже работает:\n"
-        "• «Inception» / «Бойцовский клуб» — найду в OMDB;\n"
-        "• Instagram Reel — пришли ссылку, вытащу фильмы;\n"
-        "• Пересланный пост из ТГ-канала с описанием или фото фильма — "
-        "разберу и предложу добавить;\n"
-        "• «что-то лёгкое и смешное» — подберу из твоего списка."
+        "Что умею:\n\n"
+        "/add <название> — сохранить фильм по названию или IMDb-id\n"
+        "/search <название> — найти в базе, посмотреть карточку\n"
+        "/list — твой список\n"
+        "/watched — просмотренные\n"
+        "/recommend <запрос> — подберу из списка под настроение\n\n"
+        "Ещё можно:\n"
+        "• скинуть ссылку на Instagram Reel — разберу и предложу сохранить\n"
+        "• просто написать «что-то лёгкое» — пойму как запрос на рекомендацию"
     )
     await update.message.reply_text(text)

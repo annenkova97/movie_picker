@@ -21,25 +21,18 @@ async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not results:
         await update.message.reply_text(
-            f"По запросу «{query}» ничего не найдено. "
+            f"По «{query}» ничего не нашла. "
             "Попробуй другое название (лучше на английском)."
         )
         return
 
-    await send_search_results(update.message, results[:5])
-
-
-async def send_search_results(
-    message: Message, results: list[OMDBSearchResult],
-) -> None:
-    """Отправляет карточки фильмов с кнопкой «Добавить». Переиспользуется
-    в /search и в обработке свободного текста."""
-    for item in results:
+    # Показываем до 5 результатов с кнопками «+ Сохранить»
+    for item in results[:5]:
         text = f"*{item.title}* ({item.year})"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton(
-                "Добавить в список",
-                callback_data=f"add:{item.imdb_id}",
+                "+ Сохранить",
+                callback_data=f"add:{item.imdb_id}"
             )]
         ])
 

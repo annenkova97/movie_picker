@@ -22,7 +22,12 @@ REEL_URL_RE = re.compile(
 
 
 async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработка Instagram Reel ссылок — извлечение фильмов и поиск в OMDB."""
+    """Обработка Instagram Reel ссылок — извлечение фильмов и поиск в OMDB.
+
+    Voice: friendly butler, first-person feminine ("разбираю", "нашла",
+    "сохранить можно..."). Caption layout follows design §6.3 Save
+    Confirmation: title + meta · italic rationale · source attribution.
+    """
     text = update.message.text.strip()
     match = REEL_URL_RE.search(text)
     if not match:
@@ -34,12 +39,12 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         validate_url(url)
     except InstagramReaderError:
         await update.message.reply_text(
-            "Не удалось распознать ссылку на Instagram Reel."
+            "Не разобрала ссылку. Это точно Reel?"
         )
         return
 
     status_msg = await update.message.reply_text(
-        "Обрабатываю Reel... Это может занять до минуты."
+        "Разбираю Reel — это до минуты."
     )
 
     frame_paths: list[str] = []
@@ -59,12 +64,12 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if not movies_info:
             await status_msg.edit_text(
-                "Не удалось найти фильмы в этом Reel."
+                "В этом Reel не нашла фильмов."
             )
             return
 
         await status_msg.edit_text(
-            f"Найдено {len(movies_info)} фильм(ов). Ищу в OMDB..."
+            f"Нашла {_films_pluralize(len(movies_info))}. Подтягиваю детали..."
         )
 
         found_any = False
@@ -75,7 +80,7 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 found_any = True
                 r = results[0]
 
-                # Подтягиваем полные данные и генерируем описание
+                # Подтягиваем полные данные и генерируем описание.
                 movie_base = await omdb_service.get_movie_by_id(r.imdb_id)
                 description = ""
                 if movie_base and movie_base.plot:
@@ -86,16 +91,18 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception:
                         pass
 
-                lines = [f"*{r.title}* ({r.year})"]
-                if description:
-                    lines.append(f"_{description}_")
-                if item.quote:
-                    lines.append(f"\n\"{item.quote}\"")
-                text = "\n".join(lines)
+                caption_text = _format_film_caption(
+                    title=r.title,
+                    year=r.year,
+                    imdb_rating=getattr(movie_base, "imdb_rating", None) if movie_base else None,
+                    quote=item.quote,
+                    description=description,
+                    reel_url=url,
+                )
 
                 keyboard = InlineKeyboardMarkup([
                     [InlineKeyboardButton(
-                        "Добавить в список",
+                        "+ Сохранить",
                         callback_data=f"add:{r.imdb_id}",
                     )]
                 ])
@@ -103,7 +110,7 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     try:
                         await update.message.reply_photo(
                             photo=r.poster_url,
-                            caption=text,
+                            caption=caption_text,
                             parse_mode="Markdown",
                             reply_markup=keyboard,
                         )
@@ -111,32 +118,95 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception:
                         pass
                 await update.message.reply_text(
-                    text, parse_mode="Markdown", reply_markup=keyboard,
+                    caption_text, parse_mode="Markdown", reply_markup=keyboard,
                 )
             else:
                 title = item.title_ru or item.title_en
                 desc = f"\n_{item.description}_" if item.description else ""
                 await update.message.reply_text(
-                    f"*{title}* — не найден в OMDB{desc}",
+                    f"*{title}* — не нашла в базе{desc}",
                     parse_mode="Markdown",
                 )
 
         if found_any:
-            await status_msg.edit_text("Готово! Нажми «Добавить» под нужными фильмами.")
+            await status_msg.edit_text("Готово. Сохранить можно под каждым 👇")
         else:
-            await status_msg.edit_text("Фильмы из Reel не найдены в OMDB.")
+            await status_msg.edit_text("Фильмы из Reel не нашлись в базе.")
 
     except InstagramReaderError as exc:
-        await status_msg.edit_text(f"Ошибка: {exc}")
+        await status_msg.edit_text(f"Не получилось: {exc}")
     except Exception as exc:
         import traceback
         tb = traceback.format_exc()
         print(f"[instagram_handler] ERROR: {tb}", flush=True)
-        error_text = f"Ошибка: {type(exc).__name__}: {exc}"
+        error_text = f"Не получилось: {type(exc).__name__}: {exc}"
         await status_msg.edit_text(error_text[:4000])
     finally:
         if frame_paths:
             cleanup_temp_files(frame_paths)
+
+
+def _films_pluralize(n: int) -> str:
+    """Russian plural: 1 фильм, 2-4 фильма, 5+ фильмов."""
+    last_two = n % 100
+    last = n % 10
+    if 11 <= last_two <= 14:
+        return f"{n} фильмов"
+    if last == 1:
+        return f"{n} фильм"
+    if 2 <= last <= 4:
+        return f"{n} фильма"
+    return f"{n} фильмов"
+
+
+def _format_film_caption(
+    *,
+    title: str,
+    year,
+    imdb_rating,
+    quote: str | None,
+    description: str,
+    reel_url: str,
+) -> str:
+    """Build the Save Confirmation caption per design §6.3.
+
+    Layout (legacy Markdown):
+
+        *Title* (Year)
+        ★ 7.6
+
+        _«italic-rationale»_
+
+        📷 из [Instagram](url)
+
+    `quote` (from the Reel transcript) takes priority over the LLM-generated
+    `description` because a source quote preserves the original recommendation's
+    emotional energy. Either is wrapped in Russian guillemets «».
+    """
+    header = f"*{title}*" + (f" ({year})" if year else "")
+    meta_parts: list[str] = []
+    if imdb_rating:
+        meta_parts.append(f"★ {imdb_rating}")
+    meta = " · ".join(meta_parts)
+
+    if quote:
+        italic = f"_«{quote.strip().strip(chr(34))}»_"
+    elif description:
+        italic = f"_«{description.strip()}»_"
+    else:
+        italic = ""
+
+    source = f"📷 из [Instagram]({reel_url})"
+
+    parts = [header]
+    if meta:
+        parts.append(meta)
+    if italic:
+        parts.append("")
+        parts.append(italic)
+    parts.append("")
+    parts.append(source)
+    return "\n".join(parts)
 
 
 async def _search_omdb(
