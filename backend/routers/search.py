@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Request
 import re
 from backend.models import OMDBSearchResult, MoviePreview
+from backend.rate_limit import limiter
 from backend.services import omdb_service, llm_service
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -11,7 +12,9 @@ def _has_cyrillic(text: str) -> bool:
 
 
 @router.get("", response_model=list[OMDBSearchResult])
+@limiter.limit("60/minute")
 async def search_movies(
+    request: Request,
     q: str = Query(..., min_length=1, description="Поисковый запрос"),
 ):
     """Поиск фильмов в OMDB по названию. Автоматически переводит русские запросы.
@@ -30,7 +33,9 @@ async def search_movies(
 
 
 @router.get("/preview/{imdb_id}", response_model=MoviePreview)
+@limiter.limit("60/minute")
 async def get_movie_preview(
+    request: Request,
     imdb_id: str,
 ):
     """Получить детальный превью фильма по IMDb ID — без сохранения в БД."""

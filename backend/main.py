@@ -5,8 +5,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+
 from backend import config
 from backend import database as db
+from backend.rate_limit import limiter
 from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares
 from backend.services.awards_seed import sync_awards_catalog
 
@@ -44,10 +49,16 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS для локальной разработки
+# Rate limiting (slowapi): лимитер в app.state, обработчик 429 и middleware,
+# который проставляет заголовки X-RateLimit-* в ответах.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
+# CORS прибит к конкретным origin'ам (см. CORS_ALLOW_ORIGINS в config).
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=config.CORS_ALLOW_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
