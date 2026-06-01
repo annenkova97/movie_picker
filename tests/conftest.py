@@ -26,6 +26,14 @@ os.environ.pop("DATABASE_URL", None)  # always test against SQLite
 # Skip awards-seed during tests — it's slow and not relevant to anything we test.
 os.environ.setdefault("SKIP_AWARDS_SEED", "1")
 
+# backend.config refuses to start without JWT_SECRET — give the suite a fixed one.
+os.environ.setdefault("JWT_SECRET", "test-secret-not-for-production-0123456789abcdef")
+
+# Rate limiting off by default so ordinary tests don't trip the per-IP limits
+# (register is only 5/hour). The dedicated test in test_rate_limit.py flips the
+# limiter back on for itself.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "0")
+
 
 @pytest.fixture(scope="session")
 def event_loop():

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 
 from backend import database as db
 from backend.auth import get_current_user
 from backend.models import InstagramImportRequest, Movie, MovieBase, User
 from backend.models.movie import OMDBSearchResult
+from backend.rate_limit import limiter, user_or_ip_key
 from backend.services.instagram_reader import (
     InstagramReaderError,
     validate_url,
@@ -68,11 +69,13 @@ async def _parse_reel_to_moviebases(
 
 
 @router.post("/parse", response_model=list[MovieBase])
-async def parse_instagram(payload: InstagramImportRequest):
+@limiter.limit("10/hour")
+async def parse_instagram(request: Request, payload: InstagramImportRequest):
     """Распарсить Reel и вернуть фильмы без сохранения в БД.
 
     Публичный endpoint — используется гостями. Клиент сам кладёт результат
-    в localStorage.
+    в localStorage. Лимит по IP: пайплайн дорогой (Apify + transcript + GPT),
+    а авторизации тут нет, так что это самый уязвимый к абьюзу путь.
     """
     try:
         resolved, unmatched = await _parse_reel_to_moviebases(payload)
@@ -91,7 +94,9 @@ async def parse_instagram(payload: InstagramImportRequest):
 
 
 @router.post("/import", response_model=list[Movie])
+@limiter.limit("10/hour", key_func=user_or_ip_key)
 async def import_from_instagram(
+    request: Request,
     payload: InstagramImportRequest,
     current_user: User = Depends(get_current_user),
 ):
@@ -139,7 +144,9 @@ async def import_from_instagram(
 
 
 @router.post("/search", response_model=list[OMDBSearchResult])
+@limiter.limit("10/hour", key_func=user_or_ip_key)
 async def search_from_instagram(
+    request: Request,
     payload: InstagramImportRequest,
     current_user: User = Depends(get_current_user),
 ):

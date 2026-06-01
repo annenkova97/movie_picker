@@ -171,12 +171,6 @@ def _row_to_user(row) -> dict:
 # ── users ────────────────────────────────────────────────────────────────────
 
 
-async def has_any_users() -> bool:
-    async with _pool.acquire() as conn:
-        row = await conn.fetchrow("SELECT 1 FROM users LIMIT 1")
-        return row is not None
-
-
 async def get_user_by_id(user_id: int) -> Optional[dict]:
     async with _pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -270,20 +264,6 @@ async def attach_google_sub(
             "avatar_url = COALESCE(avatar_url, $2) WHERE id = $3",
             google_sub, avatar_url, user_id,
         )
-
-
-async def claim_orphan_library_for_user(user_id: int) -> int:
-    async with _pool.acquire() as conn:
-        result = await conn.execute(
-            "UPDATE movies SET user_id = $1 "
-            "WHERE user_id IS NULL AND in_library = TRUE",
-            user_id,
-        )
-        # asyncpg returns "UPDATE N" string
-        try:
-            return int(result.split()[-1])
-        except Exception:
-            return 0
 
 
 # ── movies ───────────────────────────────────────────────────────────────────

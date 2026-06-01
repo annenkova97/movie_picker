@@ -182,29 +182,6 @@ async def init_db():
 # ----- users ---------------------------------------------------------------
 
 
-async def claim_orphan_library_for_user(user_id: int) -> int:
-    """Привязать к пользователю все «бесхозные» записи личной библиотеки.
-
-    Нужно для миграции: исторически было 62 фильма без владельца. Первый
-    зарегистрировавшийся пользователь забирает их себе. Срабатывает
-    максимум один раз — потом бесхозных записей просто нет.
-    """
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        cursor = await db.execute(
-            "UPDATE movies SET user_id = ? "
-            "WHERE user_id IS NULL AND in_library = 1",
-            (user_id,),
-        )
-        await db.commit()
-        return cursor.rowcount or 0
-
-
-async def has_any_users() -> bool:
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        async with db.execute("SELECT 1 FROM users LIMIT 1") as cur:
-            return (await cur.fetchone()) is not None
-
-
 _USER_COLS = (
     "id, email, password_hash, google_sub, telegram_id, name, avatar_url, created_at"
 )
