@@ -30,3 +30,7 @@ frontend-new/tsconfig.tsbuildinfo
 
 # FUSE filesystem artifacts
 backend/data/.fuse_hidden*
+
+# one-off migration data (contains user data — do not commit)
+telegram_migration_export.json
+prod_backup_before_merge.json
