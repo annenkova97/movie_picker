@@ -1,11 +1,9 @@
 import type { Lang } from '../i18n';
 import { T } from '../i18n';
-import type { Theme } from '../theme';
 import type { UiMovie } from '../types';
 import { TypoPoster } from './TypoPoster';
 
 interface Props {
-  th: Theme;
   lang: Lang;
   movie: UiMovie | null;
   saving: boolean;
@@ -16,154 +14,184 @@ interface Props {
   onRemove?: (m: UiMovie) => void;
 }
 
-export function MovieDetail({ th, lang, movie, saving, onClose, onSaveToWatch, onSaveAsWatched, onToggleWatched, onRemove }: Props) {
+/**
+ * Movie detail modal, wine-deep styled. Reused for saved films (library
+ * actions: toggle watched / remove) and for award/search results that aren't
+ * saved yet (save-to-watch / save-as-watched). Visibility is driven by the
+ * `movie` prop being non-null.
+ */
+export function MovieDetail({
+  lang, movie, saving, onClose, onSaveToWatch, onSaveAsWatched, onToggleWatched, onRemove,
+}: Props) {
   if (!movie) return null;
 
   const meta = [
     movie.director,
     movie.year,
-    `${movie.runtime} ${T.min[lang]}`,
+    movie.runtime > 0 ? `${movie.runtime} ${T.min[lang]}` : null,
     movie.publicRating > 0 ? `★ ${movie.publicRating.toFixed(1)}` : null,
   ].filter(Boolean).join(' · ');
 
+  const plot = lang === 'ru'
+    ? (movie.plotRu || movie.why || movie.plot)
+    : (movie.plot || movie.why);
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: 'fixed', inset: 0, zIndex: 30,
-        background: 'rgba(30,15,25,0.55)',
-        backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-        overflowY: 'auto',
-      }}
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: th.surface, borderRadius: 20, padding: 28, maxWidth: 640, width: '100%',
-          boxShadow: th.shadowLg, border: `1px solid ${th.line}`,
-          display: 'flex', flexDirection: 'column', gap: 20,
-          maxHeight: 'calc(100vh - 40px)', overflowY: 'auto',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-          <div style={{ minWidth: 0 }}>
+    <div className="md-overlay" onClick={onClose} role="dialog" aria-modal="true">
+      <div className="md-card" onClick={(e) => e.stopPropagation()}>
+        <div className="md-head">
+          <div className="md-head__text">
             {movie.award && (
-              <div style={{ fontSize: 10, fontFamily: 'ui-monospace,monospace', color: th.ink3, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              <div className="md-eyebrow">
                 ✦ {movie.award}{movie.awardYear ? ` · ${movie.awardYear}` : ''}
               </div>
             )}
-            <h2 style={{
-              margin: '4px 0 0', fontFamily: "'Fraunces', serif", fontWeight: 700,
-              fontSize: 28, lineHeight: 1.05, color: th.ink, letterSpacing: -0.4,
-            }}>{movie.title}</h2>
-            <div style={{ fontSize: 13, color: th.ink3, marginTop: 6, fontFamily: 'ui-monospace,monospace' }}>{meta}</div>
+            <h2 className="md-title">{movie.title}</h2>
+            <div className="md-meta">{meta}</div>
           </div>
-          <button
-            onClick={onClose}
-            aria-label="close"
-            style={{
-              border: 'none', background: 'transparent', color: th.ink3, fontSize: 26,
-              cursor: 'pointer', padding: 0, width: 32, height: 32, lineHeight: 1, flexShrink: 0,
-            }}
-          >×</button>
+          <button className="md-close" onClick={onClose} aria-label={T.pickClose[lang]}>×</button>
         </div>
 
-        <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div className="md-body">
           <TypoPoster movie={movie} lang={lang} w={160} h={240} />
-          <div style={{ flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <Section title={T.detailPlot[lang]} th={th}>
-              <div style={{ fontSize: 14, color: th.ink, lineHeight: 1.5 }}>
-                {(lang === 'ru'
-                  ? (movie.plotRu || movie.why || movie.plot)
-                  : (movie.plot || movie.why)
-                ) || (
-                  <span style={{ color: th.ink3, fontStyle: 'italic' }}>{T.detailNoPlot[lang]}</span>
-                )}
-              </div>
+          <div className="md-sections">
+            <Section title={T.detailPlot[lang]}>
+              {plot
+                ? <div className="md-plot">{plot}</div>
+                : <div className="md-plot md-plot--empty">{T.detailNoPlot[lang]}</div>}
             </Section>
 
             {movie.cast.length > 0 && (
-              <Section title={T.detailCast[lang]} th={th}>
-                <div style={{ fontSize: 13, color: th.ink2, lineHeight: 1.45 }}>
-                  {movie.cast.slice(0, 6).join(' · ')}
-                </div>
+              <Section title={T.detailCast[lang]}>
+                <div className="md-cast">{movie.cast.slice(0, 6).join(' · ')}</div>
               </Section>
             )}
 
             {movie.awardsText && !movie.award && (
-              <Section title={T.detailAwards[lang]} th={th}>
-                <div style={{ fontSize: 13, color: th.ink2, lineHeight: 1.45 }}>{movie.awardsText}</div>
+              <Section title={T.detailAwards[lang]}>
+                <div className="md-cast">{movie.awardsText}</div>
               </Section>
             )}
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: `1px solid ${th.line}`, paddingTop: 18 }}>
+        <div className="md-actions">
           {!movie.inLibrary && onSaveToWatch && (
-            <button onClick={() => onSaveToWatch(movie)} disabled={saving} style={{
-              border: 'none', background: th.plum, color: th.plumInk,
-              padding: '10px 16px', borderRadius: 10, cursor: saving ? 'wait' : 'pointer',
-              fontSize: 13, fontWeight: 600, letterSpacing: 0.2, opacity: saving ? 0.7 : 1,
-            }}>{T.addToWatch[lang]}</button>
+            <button className="md-btn md-btn--primary" onClick={() => onSaveToWatch(movie)} disabled={saving}>
+              {T.addToWatch[lang]}
+            </button>
           )}
           {!movie.inLibrary && onSaveAsWatched && (
-            <button onClick={() => onSaveAsWatched(movie)} disabled={saving} style={{
-              border: `1px solid ${th.lineStrong}`, background: 'transparent', color: th.ink,
-              padding: '10px 16px', borderRadius: 10, cursor: saving ? 'wait' : 'pointer',
-              fontSize: 13, fontWeight: 500, opacity: saving ? 0.7 : 1,
-            }}>{T.addToWatched[lang]}</button>
+            <button className="md-btn md-btn--ghost" onClick={() => onSaveAsWatched(movie)} disabled={saving}>
+              {T.addToWatched[lang]}
+            </button>
           )}
           {movie.inLibrary && onToggleWatched && (
-            <button onClick={() => onToggleWatched(movie)} style={{
-              border: `1px solid ${th.line}`, background: 'transparent', color: th.ink2,
-              padding: '10px 16px', borderRadius: 10, cursor: 'pointer',
-              fontSize: 13, fontWeight: 500,
-            }}>{movie.watched ? `↺ ${T.unwatch[lang]}` : `✓ ${T.markWatched[lang]}`}</button>
+            <button className="md-btn md-btn--ghost" onClick={() => onToggleWatched(movie)} disabled={saving}>
+              {movie.watched ? `↺ ${T.unwatch[lang]}` : `✓ ${T.markWatched[lang]}`}
+            </button>
           )}
           {movie.inLibrary && onRemove && (
             <button
+              className="md-btn md-btn--danger"
+              disabled={saving}
               onClick={() => {
                 const msg = `${T.removeConfirmPrefix[lang]}${movie.title}${T.removeConfirmSuffix[lang]}`;
                 if (window.confirm(msg)) onRemove(movie);
               }}
-              disabled={saving}
-              style={{
-                border: `1px solid ${th.line}`, background: 'transparent', color: '#b4442e',
-                padding: '10px 14px', borderRadius: 10, cursor: saving ? 'wait' : 'pointer',
-                fontSize: 13, fontWeight: 500, opacity: saving ? 0.7 : 1,
-              }}
             >✕ {T.remove[lang]}</button>
           )}
 
-          <div style={{ flex: 1 }} />
+          <span className="md-spacer" />
 
           <a
+            className="md-imdb"
             href={`https://www.imdb.com/title/${movie.imdbId}/`}
             target="_blank"
             rel="noreferrer noopener"
-            style={{
-              fontSize: 12, color: th.ink3, textDecoration: 'none',
-              fontFamily: 'ui-monospace,monospace', letterSpacing: 0.3,
-              borderBottom: `1px dashed ${th.line}`, paddingBottom: 2,
-            }}
           >↗ {T.detailImdb[lang]}</a>
         </div>
+
+        <style>{styles}</style>
       </div>
     </div>
   );
 }
 
-function Section({ title, children, th }: { title: string; children: React.ReactNode; th: Theme }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <div style={{
-        fontSize: 10, fontFamily: 'ui-monospace,monospace', color: th.ink3,
-        textTransform: 'uppercase', letterSpacing: 0.7, marginBottom: 6,
-      }}>{title}</div>
+      <div className="md-section-title">{title}</div>
       {children}
     </div>
   );
 }
+
+const styles = `
+.md-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(20, 10, 18, 0.6);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; overflow-y: auto;
+}
+.md-card {
+  background: var(--color-wine);
+  border: 1px solid var(--wine-light-border);
+  border-radius: 20px; padding: 26px;
+  max-width: 640px; width: 100%;
+  max-height: calc(100vh - 40px); overflow-y: auto;
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5);
+  display: flex; flex-direction: column; gap: 18px;
+  animation: md-rise 0.2s ease both;
+}
+@keyframes md-rise { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.md-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.md-head__text { min-width: 0; }
+.md-eyebrow {
+  font-family: var(--font-body); font-weight: 600; font-size: 10px;
+  letter-spacing: 1.4px; text-transform: uppercase; color: var(--color-gold);
+}
+.md-title {
+  margin: 6px 0 0; font-family: var(--font-display); font-weight: 700;
+  font-size: 28px; line-height: 1.06; letter-spacing: -0.4px; color: var(--color-cream);
+}
+.md-meta {
+  margin-top: 8px; font-family: var(--font-body); font-size: 13px; color: var(--cream-60);
+}
+.md-close {
+  border: none; background: transparent; color: var(--cream-60);
+  font-size: 28px; line-height: 1; cursor: pointer; padding: 0 4px; flex-shrink: 0;
+}
+.md-body { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.md-sections { flex: 1 1 260px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+.md-section-title {
+  font-family: var(--font-body); font-weight: 600; font-size: 10px;
+  letter-spacing: 1.2px; text-transform: uppercase; color: var(--color-gold); margin-bottom: 6px;
+}
+.md-plot { font-family: var(--font-body); font-size: 14px; line-height: 1.55; color: var(--cream-85); }
+.md-plot--empty { font-style: italic; color: var(--cream-55); }
+.md-cast { font-family: var(--font-body); font-size: 13px; line-height: 1.45; color: var(--cream-70); }
+.md-actions {
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  border-top: 1px solid var(--wine-light-border); padding-top: 16px;
+}
+.md-btn {
+  border: 1px solid transparent; padding: 10px 16px; border-radius: 12px;
+  font-family: var(--font-body); font-weight: 600; font-size: 13px; cursor: pointer;
+  transition: filter 0.15s ease, background 0.15s ease;
+}
+.md-btn:disabled { opacity: 0.6; cursor: wait; }
+.md-btn--primary { background: var(--color-gold); color: var(--color-wine-deep); }
+.md-btn--primary:hover:not(:disabled) { filter: brightness(1.07); }
+.md-btn--ghost { background: transparent; border-color: var(--wine-light-border); color: var(--color-cream); }
+.md-btn--ghost:hover:not(:disabled) { border-color: var(--gold-border); }
+.md-btn--danger { background: transparent; border-color: var(--wine-light-border); color: #e08a8a; }
+.md-btn--danger:hover:not(:disabled) { border-color: rgba(224, 138, 138, 0.5); }
+.md-spacer { flex: 1; }
+.md-imdb {
+  font-family: var(--font-body); font-size: 12px; color: var(--cream-60);
+  text-decoration: none; border-bottom: 1px dashed var(--wine-light-border); padding-bottom: 2px;
+}
+.md-imdb:hover { color: var(--color-gold); }
+`;

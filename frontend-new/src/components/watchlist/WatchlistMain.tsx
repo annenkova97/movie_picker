@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useSettings } from '../../settings';
+import { T, type Lang } from '../../i18n';
 
 export interface SavedFilm {
   id: string;
@@ -39,8 +41,11 @@ interface Props {
   userName: string;
   films: SavedFilm[];
   recommendations: RecFilm[];
+  bookCount?: number;
   onOpenTonight: () => void;
   onOpenSettings: () => void;
+  onOpenSearch: () => void;
+  onOpenBooks: () => void;
   onSelectFilm: (film: SavedFilm) => void;
   onSelectRec: (film: RecFilm) => void;
   onSeeAllAwards: () => void;
@@ -49,38 +54,45 @@ interface Props {
 type Filter = 'all' | 'movies' | 'series';
 
 export function WatchlistMain({
-  userName, films, recommendations,
-  onOpenTonight, onOpenSettings, onSelectFilm, onSelectRec, onSeeAllAwards,
+  userName, films, recommendations, bookCount = 0,
+  onOpenTonight, onOpenSettings, onOpenSearch, onOpenBooks,
+  onSelectFilm, onSelectRec, onSeeAllAwards,
 }: Props) {
+  const { lang, setLang } = useSettings();
   const [filter, setFilter] = useState<Filter>('all');
 
-  // Books are disabled in spec — kept as a static count for the UI.
   const counts = {
     all: films.length,
-    movies: films.length, // sample data has no genre-flag to split — placeholder
+    movies: films.length, // no series flag in the data yet — placeholder
     series: 0,
-    books: 0,
+    books: bookCount,
   };
 
   return (
     <div className="lt-screen wl-screen">
       <header className="wl-header">
         <div>
-          <div className="wl-greeting">Привет, {userName} <span aria-hidden>🎬</span></div>
-          <h1 className="wl-title">Хочу посмотреть</h1>
+          <div className="wl-greeting">{T.greetingBack[lang].replace('%s', userName)} <span aria-hidden>🎬</span></div>
+          <h1 className="wl-title">{T.wlTitle[lang]}</h1>
         </div>
-        <button className="wl-settings" onClick={onOpenSettings} aria-label="Настройки">
-          <SettingsIcon />
-        </button>
+        <div className="wl-actions">
+          <LangToggle lang={lang} setLang={setLang} />
+          <button className="wl-iconbtn" onClick={onOpenSearch} aria-label={T.searchAria[lang]}>
+            <SearchIcon />
+          </button>
+          <button className="wl-iconbtn" onClick={onOpenSettings} aria-label={T.settingsAria[lang]}>
+            <SettingsIcon />
+          </button>
+        </div>
       </header>
 
       <section className="wl-tonight-cta">
         <button className="wl-tonight-cta__btn" onClick={onOpenTonight}>
           <span className="wl-tonight-cta__emoji" aria-hidden>🌙</span>
           <span className="wl-tonight-cta__text">
-            <span className="wl-tonight-cta__eyebrow">Сегодня вечером</span>
-            <span className="wl-tonight-cta__title">Что посмотреть?</span>
-            <span className="wl-tonight-cta__subtitle">подберу под настроение</span>
+            <span className="wl-tonight-cta__eyebrow">{T.tonightEyebrow[lang]}</span>
+            <span className="wl-tonight-cta__title">{T.tonightTitle[lang]}</span>
+            <span className="wl-tonight-cta__subtitle">{T.tonightSubtitle[lang]}</span>
           </span>
           <span className="wl-tonight-cta__arrow" aria-hidden>→</span>
         </button>
@@ -88,30 +100,30 @@ export function WatchlistMain({
 
       <section className="wl-filters">
         <FilterChip
-          label="Все"
+          label={T.wlFilterAll[lang]}
           count={counts.all}
           active={filter === 'all'}
           onClick={() => setFilter('all')}
         />
         <FilterChip
-          label="Фильмы"
+          label={T.wlFilterMovies[lang]}
           count={counts.movies}
           active={filter === 'movies'}
           onClick={() => setFilter('movies')}
         />
         <FilterChip
-          label="Сериалы"
+          label={T.wlFilterSeries[lang]}
           count={counts.series}
           active={filter === 'series'}
           onClick={() => setFilter('series')}
         />
-        <FilterChip label="Книги" count={counts.books} disabled />
+        <FilterChip label={T.wlFilterBooks[lang]} count={counts.books} onClick={onOpenBooks} />
       </section>
 
       <section className="wl-saved">
         <div className="wl-section-header">
-          <div className="wl-section-title">Недавно сохранённые</div>
-          <button className="wl-sort" type="button">по дате ↓</button>
+          <div className="wl-section-title">{T.wlRecent[lang]}</div>
+          <button className="wl-sort" type="button">{T.wlSortByDate[lang]}</button>
         </div>
         <div className="wl-saved-list">
           {films.map((film) => (
@@ -123,10 +135,10 @@ export function WatchlistMain({
       <section className="wl-recs">
         <div className="wl-recs__head">
           <div>
-            <div className="wl-recs__eyebrow">Стоит посмотреть</div>
-            <div className="wl-recs__title">Фильмы с номинацией</div>
+            <div className="wl-recs__eyebrow">{T.wlRecsEyebrow[lang]}</div>
+            <div className="wl-recs__title">{T.wlRecsTitle[lang]}</div>
           </div>
-          <button className="wl-recs__see-all" onClick={onSeeAllAwards}>Все →</button>
+          <button className="wl-recs__see-all" onClick={onSeeAllAwards}>{T.wlSeeAll[lang]}</button>
         </div>
         <div className="wl-recs__row">
           {recommendations.map((rec) => (
@@ -218,6 +230,35 @@ function RecCard({ rec, onClick }: { rec: RecFilm; onClick: () => void }) {
       <div className="wl-rec__title">{rec.title}</div>
       <div className="wl-rec__meta">{rec.director} · {rec.year}</div>
     </button>
+  );
+}
+
+/** Always-visible RU/EN switch in the header so a non-Russian visitor can
+ *  immediately flip the language without digging into settings. */
+export function LangToggle({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
+  return (
+    <div className="wl-lang" role="group" aria-label="Language">
+      {(['ru', 'en'] as Lang[]).map((l) => (
+        <button
+          key={l}
+          type="button"
+          className={`wl-lang__btn${lang === l ? ' is-active' : ''}`}
+          onClick={() => setLang(l)}
+          aria-pressed={lang === l}
+        >
+          {l.toUpperCase()}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function SearchIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6" />
+      <path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
   );
 }
 

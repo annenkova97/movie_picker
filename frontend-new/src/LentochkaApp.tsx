@@ -1,9 +1,16 @@
 import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './auth';
+import { useSettings } from './settings';
 import { useLibrary } from './hooks/useLibrary';
-import { recommend } from './api';
-import { toUiMovie, type ApiMovie, type UiMovie, type RecSource } from './types';
+import { recommend, listAwards } from './api';
+import { T, type Lang } from './i18n';
+import { useBooks } from './hooks/useBooks';
+import { SettingsSheet } from './components/SettingsSheet';
+import { MovieDetail } from './components/MovieDetail';
+import { SearchSheet } from './components/SearchSheet';
+import { BooksScreen } from './components/books/BooksScreen';
+import { toUiMovie, hueFor, type ApiMovie, type UiMovie, type RecSource } from './types';
 import {
   TonightMoodFilters,
 } from './components/tonight/TonightMoodFilters';
@@ -12,18 +19,21 @@ import {
 } from './components/tonight/TonightResults';
 import {
   WatchlistMain,
-  SAMPLE_RECS,
   type SavedFilm,
   type RecFilm,
 } from './components/watchlist/WatchlistMain';
 import {
   WatchlistEmpty,
 } from './components/watchlist/WatchlistEmpty';
+import { AwardsBrowse } from './components/watchlist/AwardsBrowse';
 
 type View =
   | { name: 'watchlist' }
   | { name: 'tonight-pick' }
-  | { name: 'tonight-results'; films: TonightFilm[]; mood: string; duration: string | null };
+  | { name: 'tonight-results'; films: TonightFilm[]; mood: string; duration: string | null }
+  | { name: 'awards-all' }
+  | { name: 'search' }
+  | { name: 'books' };
 
 interface TonightFilm {
   id: string;
@@ -42,13 +52,15 @@ interface TonightFilm {
 
 interface Props {
   onOpenAuth: () => void;
-  onOpenSettings: () => void;
+  onOpenShare: () => void;
 }
 
-export function LentochkaApp({ onOpenAuth, onOpenSettings }: Props) {
+export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
   const auth = useAuth();
+  const { lang } = useSettings();
   const lib = useLibrary();
-  const qc = useQueryClient();
+  const books = useBooks();
+  const bookCount = (books.list.data ?? []).length;
   const moviesQuery = lib.list;
 
   const uiMovies = useMemo<UiMovie[]>(
@@ -57,13 +69,41 @@ export function LentochkaApp({ onOpenAuth, onOpenSettings }: Props) {
   );
 
   const savedFilms = useMemo<SavedFilm[]>(
-    () => uiMovies.map(uiMovieToSavedFilm),
-    [uiMovies],
+    () => uiMovies.map((m) => uiMovieToSavedFilm(m, lang)),
+    [uiMovies, lang],
   );
 
+  const userName = auth.user?.name ?? T.friend[lang];
+
+  // Real award-winners catalog (replaces the old hardcoded SAMPLE_RECS).
+  const awardsQuery = useQuery({ queryKey: ['awards'], queryFn: () => listAwards() });
+  const awards = useMemo<ApiMovie[]>(() => awardsQuery.data ?? [], [awardsQuery.data]);
+  const recFilms = useMemo<RecFilm[]>(() => awards.map(apiMovieToRecFilm), [awards]);
+  // Lookups to recover the source record when a card is tapped.
+  const awardApiById = useMemo(() => new Map(awards.map((a) => [String(a.id), a])), [awards]);
+  const uiById = useMemo(() => new Map(uiMovies.map((m) => [String(m.id), m])), [uiMovies]);
+
   const [view, setView] = useState<View>({ name: 'watchlist' });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [selected, setSelected] = useState<UiMovie | null>(null);
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
+
+  const detailSaving = lib.saveAward.isPending || lib.patch.isPending || lib.remove.isPending;
+
+  const openSavedDetail = (film: SavedFilm) => {
+    const ui = uiById.get(film.id);
+    if (ui) setSelected(ui);
+  };
+  const openAwardDetail = (rec: RecFilm) => {
+    const api = awardApiById.get(rec.id);
+    if (api) setSelected(toUiMovie(api));
+  };
+  const saveAwardFromDetail = (m: UiMovie, watched: boolean) => {
+    const api = awardApiById.get(String(m.id));
+    if (!api) return;
+    lib.saveAward.mutateAsync({ movie: api, watched }).finally(() => setSelected(null));
+  };
 
   const handleMoodSubmit = async (payload: {
     text: string; genre: string | null; duration: string | null; era: string | null;
@@ -74,7 +114,7 @@ export function LentochkaApp({ onOpenAuth, onOpenSettings }: Props) {
       const query = buildMoodQuery(payload);
       const inlineLibrary = lib.isGuest ? (moviesQuery.data ?? []) : undefined;
       const res = await recommend(query, false, inlineLibrary);
-      const films = res.movies.slice(0, 3).map(apiMovieToTonightFilm);
+      const films = res.movies.slice(0, 3).map((m) => apiMovieToTonightFilm(m, lang));
       setView({
         name: 'tonight-results',
         films,
@@ -127,49 +167,91 @@ export function LentochkaApp({ onOpenAuth, onOpenSettings }: Props) {
     );
   }
 
+  if (view.name === 'search') {
+    return <SearchSheet onClose={() => setView({ name: 'watchlist' })} />;
+  }
+
+  if (view.name === 'books') {
+    return <BooksScreen onBack={() => setView({ name: 'watchlist' })} />;
+  }
+
+  const settingsSheet = settingsOpen ? (
+    <SettingsSheet
+      onClose={() => setSettingsOpen(false)}
+      onOpenShare={onOpenShare}
+      onOpenAuth={onOpenAuth}
+    />
+  ) : null;
+
+  const detailModal = (
+    <MovieDetail
+      lang={lang}
+      movie={selected}
+      saving={detailSaving}
+      onClose={() => setSelected(null)}
+      onSaveToWatch={(m) => saveAwardFromDetail(m, false)}
+      onSaveAsWatched={(m) => saveAwardFromDetail(m, true)}
+      onToggleWatched={(m) =>
+        lib.patch.mutateAsync({ id: m.id, fields: { is_watched: !m.watched } }).finally(() => setSelected(null))}
+      onRemove={(m) => lib.remove.mutateAsync(m.id).finally(() => setSelected(null))}
+    />
+  );
+
+  const saveAwardRec = (rec: RecFilm) => {
+    const api = awardApiById.get(rec.id);
+    if (api) lib.saveAward.mutateAsync({ movie: api, watched: false });
+  };
+
+  if (view.name === 'awards-all') {
+    return (
+      <>
+        <AwardsBrowse
+          curated={recFilms}
+          onBack={() => setView({ name: 'watchlist' })}
+          onSave={saveAwardRec}
+          onSelect={openAwardDetail}
+        />
+        {detailModal}
+      </>
+    );
+  }
+
   if (uiMovies.length === 0) {
     return (
-      <WatchlistEmpty
-        userName={auth.user?.name ?? 'друг'}
-        curated={SAMPLE_RECS}
-        onOpenSettings={onOpenSettings}
-        onSave={(rec) => {
-          // Curated rec save: relies on the same library hook the old AwardsView
-          // used. Stubbed for now since the new RecFilm shape doesn't carry an
-          // ApiMovie. Wired up properly when curated catalog ships from backend.
-          console.log('[empty:save]', rec.title);
-          qc.invalidateQueries({ queryKey: ['library'] });
-        }}
-        onSelectFilm={(rec) => {
-          console.log('[empty:select]', rec.title);
-        }}
-      />
+      <>
+        <WatchlistEmpty
+          userName={userName}
+          curated={recFilms}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSearch={() => setView({ name: 'search' })}
+          onOpenBooks={() => setView({ name: 'books' })}
+          onSave={saveAwardRec}
+          onSelectFilm={openAwardDetail}
+        />
+        {settingsSheet}
+        {detailModal}
+      </>
     );
   }
 
   return (
-    <WatchlistMain
-      userName={auth.user?.name ?? 'друг'}
-      films={savedFilms}
-      recommendations={SAMPLE_RECS}
-      onOpenTonight={() => setView({ name: 'tonight-pick' })}
-      onOpenSettings={() => {
-        if (!auth.user) {
-          onOpenAuth();
-          return;
-        }
-        onOpenSettings();
-      }}
-      onSelectFilm={(film) => {
-        console.log('[watchlist:select-film]', film.title);
-      }}
-      onSelectRec={(rec) => {
-        console.log('[watchlist:select-rec]', rec.title);
-      }}
-      onSeeAllAwards={() => {
-        console.log('[watchlist:see-all]');
-      }}
-    />
+    <>
+      <WatchlistMain
+        userName={userName}
+        films={savedFilms}
+        recommendations={recFilms}
+        bookCount={bookCount}
+        onOpenTonight={() => setView({ name: 'tonight-pick' })}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSearch={() => setView({ name: 'search' })}
+        onOpenBooks={() => setView({ name: 'books' })}
+        onSelectFilm={openSavedDetail}
+        onSelectRec={openAwardDetail}
+        onSeeAllAwards={() => setView({ name: 'awards-all' })}
+      />
+      {settingsSheet}
+      {detailModal}
+    </>
   );
 }
 
@@ -214,12 +296,16 @@ const SOURCE_ICON: Record<RecSource, string> = {
   personal: '✦',
 };
 
-const SOURCE_LABEL: Record<RecSource, string> = {
-  instagram: 'из Instagram',
-  telegram: 'из Telegram',
-  friends: 'от друга',
-  personal: 'личное',
+const SOURCE_LABEL_KEY: Record<RecSource, 'recSrcInstagram' | 'recSrcTelegram' | 'recSrcFriends' | 'recSrcPersonal'> = {
+  instagram: 'recSrcInstagram',
+  telegram: 'recSrcTelegram',
+  friends: 'recSrcFriends',
+  personal: 'recSrcPersonal',
 };
+
+function sourceCaption(src: RecSource, lang: Lang): string {
+  return `${SOURCE_ICON[src]} ${T[SOURCE_LABEL_KEY[src]][lang]}`;
+}
 
 function gradientForHue(hue: number): string {
   return `linear-gradient(160deg, hsl(${hue}, 55%, 42%) 0%, hsl(${hue}, 50%, 26%) 50%, hsl(${(hue + 8) % 360}, 60%, 12%) 100%)`;
@@ -240,8 +326,8 @@ function formatRuntime(minutes: number): string {
   return `${h} ч ${m} мин`;
 }
 
-function uiMovieToSavedFilm(m: UiMovie): SavedFilm {
-  const genre = m.genres[0] ?? 'фильм';
+function uiMovieToSavedFilm(m: UiMovie, lang: Lang): SavedFilm {
+  const genre = m.genres[0] ?? (lang === 'ru' ? 'фильм' : 'film');
   return {
     id: String(m.id),
     title: m.title,
@@ -251,7 +337,7 @@ function uiMovieToSavedFilm(m: UiMovie): SavedFilm {
     runtime: formatRuntime(m.runtime),
     rating: m.publicRating,
     italic: m.why ?? m.recNote ?? '',
-    source: `${SOURCE_ICON[m.recSource]} ${SOURCE_LABEL[m.recSource]}`,
+    source: sourceCaption(m.recSource, lang),
     streaming: undefined,
     poster: m.posterUrl
       ? { background: `center / cover no-repeat url("${m.posterUrl}") , ${gradientForHue(m.hue)}`, overlay: '' }
@@ -259,18 +345,51 @@ function uiMovieToSavedFilm(m: UiMovie): SavedFilm {
   };
 }
 
-function apiMovieToTonightFilm(api: ApiMovie): TonightFilm {
+/** Normalise an OMDB/award-string into a short uppercase badge label. */
+function shortAward(award: string | null | undefined): string | undefined {
+  if (!award) return undefined;
+  if (/palme|cannes/i.test(award)) return "PALME D'OR";
+  if (/oscar|academy/i.test(award)) return 'OSCAR';
+  if (/golden globe/i.test(award)) return 'GOLDEN GLOBE';
+  if (/golden lion|venice/i.test(award)) return 'GOLDEN LION';
+  if (/bafta/i.test(award)) return 'BAFTA';
+  return award.toUpperCase().slice(0, 14);
+}
+
+function apiMovieToRecFilm(api: ApiMovie): RecFilm {
+  const ui = toUiMovie(api);
+  const hue = hueFor(api);
+  return {
+    id: String(api.id),
+    title: ui.title,
+    director: ui.director || '',
+    year: ui.year ?? 0,
+    award: shortAward(api.award),
+    poster: ui.posterUrl
+      ? {
+          background: `center / cover no-repeat url("${ui.posterUrl}"), ${gradientForHue(hue)}`,
+          overlay: '',
+        }
+      : {
+          background: gradientForHue(hue),
+          overlay: overlayForTitle(ui.title),
+          overlayFont: 'body-caps',
+        },
+  };
+}
+
+function apiMovieToTonightFilm(api: ApiMovie, lang: Lang): TonightFilm {
   const ui = toUiMovie(api);
   return {
     id: String(ui.id),
     title: ui.title,
     award: ui.award ?? undefined,
     year: ui.year ?? 0,
-    genre: ui.genres[0] ?? 'фильм',
+    genre: ui.genres[0] ?? (lang === 'ru' ? 'фильм' : 'film'),
     runtime: formatRuntime(ui.runtime),
     rating: ui.publicRating,
     rationale: ui.why ?? ui.recNote ?? '',
-    source: `${SOURCE_ICON[ui.recSource]} ${SOURCE_LABEL[ui.recSource]}`,
+    source: sourceCaption(ui.recSource, lang),
     streaming: undefined,
     poster: ui.posterUrl
       ? { background: `center / cover no-repeat url("${ui.posterUrl}") , ${gradientForHue(ui.hue)}`, overlay: '' }

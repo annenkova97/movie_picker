@@ -37,6 +37,14 @@
   --wine-light-border: rgba(90, 55, 96, 0.40);   /* default border */
   --wine-light-divider: rgba(90, 55, 96, 0.45);  /* divider lines */
 
+  /* ----- Muted cream text steps (so components can invert in light mode) ----- */
+  --cream-92: rgba(233, 217, 167, 0.92);
+  --cream-85: rgba(233, 217, 167, 0.85);
+  --cream-70: rgba(233, 217, 167, 0.70);
+  --cream-60: rgba(233, 217, 167, 0.60);
+  --cream-55: rgba(233, 217, 167, 0.55);
+  --cream-50: rgba(233, 217, 167, 0.50);
+
   /* ----- Typography: Family ----- */
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -121,11 +129,22 @@
 
 [data-theme="light"] {
   --color-wine-deep: #FAF6EE;   /* cream as bg */
-  --color-wine: #F5E6B8;        /* slightly darker cream as surface */
+  --color-wine: #FFFFFF;        /* white cards on cream bg */
   --color-wine-light: #E5C9A0;  /* warm beige border */
   --color-cream: #2A1830;       /* wine deep as text */
   --color-cream-soft: #5A3760;  /* wine light as secondary */
   /* gold stays the same */
+
+  /* Inverted muted-text steps: dark ink at matching opacities so cream-on-wine
+     captions stay legible once the surfaces flip to cream/white. */
+  --cream-92: rgba(42, 24, 48, 0.92);
+  --cream-85: rgba(42, 24, 48, 0.82);
+  --cream-70: rgba(42, 24, 48, 0.65);
+  --cream-60: rgba(42, 24, 48, 0.55);
+  --cream-55: rgba(42, 24, 48, 0.50);
+  --cream-50: rgba(42, 24, 48, 0.45);
+
+  --wine-light-border: rgba(90, 55, 96, 0.20);
 }
 
 /* ============================================================
