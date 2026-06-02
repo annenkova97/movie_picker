@@ -231,6 +231,7 @@ export const T = {
   tonightSubtitle:{ ru: 'подберу под настроение',  en: 'a pick for your mood' } as Pair,
   settingsAria:   { ru: 'Настройки',               en: 'Settings' } as Pair,
   searchAria:     { ru: 'Поиск',                   en: 'Search' } as Pair,
+  shareShort:     { ru: 'Поделиться',              en: 'Share' } as Pair,
   emptyHeroTitle: { ru: 'Здесь пока пусто',        en: 'Nothing here yet' } as Pair,
   emptyHeroSub:   { ru: 'Сохраняй фильмы из соцсетей, от друзей — или начни с лучшего ниже ↓',
                     en: 'Save films from social media or friends — or start with the best below ↓' } as Pair,

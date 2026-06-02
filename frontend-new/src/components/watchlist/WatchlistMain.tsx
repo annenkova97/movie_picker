@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSettings } from '../../settings';
+import { useAuth } from '../../auth';
 import { T, type Lang } from '../../i18n';
 
 export interface SavedFilm {
@@ -43,7 +44,8 @@ interface Props {
   recommendations: RecFilm[];
   bookCount?: number;
   onOpenTonight: () => void;
-  onOpenSettings: () => void;
+  onOpenAuth: () => void;
+  onShare: () => void;
   onOpenSearch: () => void;
   onOpenBooks: () => void;
   onSelectFilm: (film: SavedFilm) => void;
@@ -55,7 +57,7 @@ type Filter = 'all' | 'movies' | 'series';
 
 export function WatchlistMain({
   userName, films, recommendations, bookCount = 0,
-  onOpenTonight, onOpenSettings, onOpenSearch, onOpenBooks,
+  onOpenTonight, onOpenAuth, onShare, onOpenSearch, onOpenBooks,
   onSelectFilm, onSelectRec, onSeeAllAwards,
 }: Props) {
   const { lang, setLang } = useSettings();
@@ -80,9 +82,7 @@ export function WatchlistMain({
           <button className="wl-iconbtn" onClick={onOpenSearch} aria-label={T.searchAria[lang]}>
             <SearchIcon />
           </button>
-          <button className="wl-iconbtn" onClick={onOpenSettings} aria-label={T.settingsAria[lang]}>
-            <SettingsIcon />
-          </button>
+          <AccountButton onSignIn={onOpenAuth} />
         </div>
       </header>
 
@@ -123,7 +123,7 @@ export function WatchlistMain({
       <section className="wl-saved">
         <div className="wl-section-header">
           <div className="wl-section-title">{T.wlRecent[lang]}</div>
-          <button className="wl-sort" type="button">{T.wlSortByDate[lang]}</button>
+          <button className="wl-share" type="button" onClick={onShare}>↗ {T.shareShort[lang]}</button>
         </div>
         <div className="wl-saved-list">
           {films.map((film) => (
@@ -262,21 +262,51 @@ export function SearchIcon() {
   );
 }
 
-function SettingsIcon() {
+/** Header account control: a guest sees a "Sign in" pill; a signed-in user sees
+ *  an avatar that opens a small menu with their name and a logout action
+ *  (logout hidden inside Telegram, where it's meaningless). Replaces the old
+ *  settings gear now that settings hold nothing but account. */
+export function AccountButton({ onSignIn }: { onSignIn: () => void }) {
+  const { lang } = useSettings();
+  const { user, logout, isTelegram } = useAuth();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  if (!user) {
+    return <button className="wl-signin" onClick={onSignIn}>{T.signIn[lang]}</button>;
+  }
+
+  const initial = (user.name || user.email || '?').trim().charAt(0).toUpperCase();
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path
-        d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-      />
-      <path
-        d="m19.4 15-.4-1c.3-.5.5-1.1.6-1.7l1.3-.5a8.8 8.8 0 0 0 0-3.6l-1.3-.5a6.1 6.1 0 0 0-.6-1.7l.4-1-2.6-2.6-1 .4a6.1 6.1 0 0 0-1.7-.6l-.5-1.3a8.8 8.8 0 0 0-3.6 0l-.5 1.3c-.6.1-1.2.3-1.7.6l-1-.4-2.6 2.6.4 1c-.3.5-.5 1.1-.6 1.7l-1.3.5a8.8 8.8 0 0 0 0 3.6l1.3.5c.1.6.3 1.2.6 1.7l-.4 1 2.6 2.6 1-.4c.5.3 1.1.5 1.7.6l.5 1.3a8.8 8.8 0 0 0 3.6 0l.5-1.3c.6-.1 1.2-.3 1.7-.6l1 .4 2.6-2.6Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <div className="wl-account" ref={ref}>
+      <button
+        className="wl-avatar"
+        onClick={() => setOpen((v) => !v)}
+        title={user.email}
+        aria-label={user.name || user.email}
+      >
+        {user.avatar_url ? <img src={user.avatar_url} alt="" /> : initial}
+      </button>
+      {open && (
+        <div className="wl-account-menu">
+          <div className="wl-account-menu__name">{user.name || user.email}</div>
+          {!isTelegram && (
+            <button className="wl-account-menu__logout" onClick={() => { setOpen(false); logout(); }}>
+              {T.logout[lang]}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -571,10 +601,21 @@ const styles = `
   background: transparent;
   font-family: var(--font-body);
   font-size: 13px;
-  color: rgba(233, 217, 167, 0.6);
+  color: var(--cream-60);
   cursor: pointer;
   padding: 4px 0;
 }
+.wl-share {
+  border: 0;
+  background: transparent;
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-gold);
+  cursor: pointer;
+  padding: 4px 0;
+}
+.wl-share:hover { filter: brightness(1.12); }
 
 .wl-saved-list {
   display: flex;

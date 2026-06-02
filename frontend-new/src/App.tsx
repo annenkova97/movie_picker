@@ -41,8 +41,9 @@ export default function App() {
 }
 
 function AppShell() {
-  const { lang, theme: themeName } = useSettings();
-  const th = THEMES[themeName];
+  const { lang } = useSettings();
+  // App is dark-only now; legacy modal components still take a theme object.
+  const th = THEMES.dark;
   const auth = useAuth();
   const shareSlug = readShareSlug();
 
@@ -91,7 +92,8 @@ function AppShell() {
         films={SAMPLE_SAVED}
         recommendations={SAMPLE_RECS}
         onOpenTonight={() => console.log('[watchlist:open-tonight]')}
-        onOpenSettings={() => console.log('[watchlist:open-settings]')}
+        onOpenAuth={() => console.log('[watchlist:open-auth]')}
+        onShare={() => console.log('[watchlist:share]')}
         onOpenSearch={() => console.log('[watchlist:open-search]')}
         onOpenBooks={() => console.log('[watchlist:open-books]')}
         onSelectFilm={(f) => console.log('[watchlist:select-film]', f.title)}
@@ -105,7 +107,7 @@ function AppShell() {
       <WatchlistEmpty
         userName="Настя"
         curated={SAMPLE_RECS}
-        onOpenSettings={() => console.log('[empty:open-settings]')}
+        onOpenAuth={() => console.log('[empty:open-auth]')}
         onOpenSearch={() => console.log('[empty:open-search]')}
         onOpenBooks={() => console.log('[empty:open-books]')}
         onSave={(f) => console.log('[empty:save]', f.title)}

@@ -1,13 +1,13 @@
 import { useSettings } from '../../settings';
 import { T } from '../../i18n';
 import type { RecFilm } from './WatchlistMain';
-import { SAMPLE_RECS, LangToggle, SearchIcon } from './WatchlistMain';
+import { SAMPLE_RECS, LangToggle, SearchIcon, AccountButton } from './WatchlistMain';
 import { CuratedGrid } from './CuratedGrid';
 
 interface Props {
   userName: string;
   curated: RecFilm[];
-  onOpenSettings: () => void;
+  onOpenAuth: () => void;
   onOpenSearch: () => void;
   onOpenBooks: () => void;
   onSave: (film: RecFilm) => void;
@@ -15,7 +15,7 @@ interface Props {
 }
 
 export function WatchlistEmpty({
-  userName, curated, onOpenSettings, onOpenSearch, onOpenBooks, onSave, onSelectFilm,
+  userName, curated, onOpenAuth, onOpenSearch, onOpenBooks, onSave, onSelectFilm,
 }: Props) {
   const { lang, setLang } = useSettings();
 
@@ -31,9 +31,7 @@ export function WatchlistEmpty({
           <button className="wl-iconbtn" onClick={onOpenSearch} aria-label={T.searchAria[lang]}>
             <SearchIcon />
           </button>
-          <button className="wl-iconbtn" onClick={onOpenSettings} aria-label={T.settingsAria[lang]}>
-            <SettingsIcon />
-          </button>
+          <AccountButton onSignIn={onOpenAuth} />
         </div>
       </header>
 
@@ -62,20 +60,6 @@ export function WatchlistEmpty({
 
       <style>{styles}</style>
     </div>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="m19.4 15-.4-1c.3-.5.5-1.1.6-1.7l1.3-.5a8.8 8.8 0 0 0 0-3.6l-1.3-.5a6.1 6.1 0 0 0-.6-1.7l.4-1-2.6-2.6-1 .4a6.1 6.1 0 0 0-1.7-.6l-.5-1.3a8.8 8.8 0 0 0-3.6 0l-.5 1.3c-.6.1-1.2.3-1.7.6l-1-.4-2.6 2.6.4 1c-.3.5-.5 1.1-.6 1.7l-1.3.5a8.8 8.8 0 0 0 0 3.6l1.3.5c.1.6.3 1.2.6 1.7l-.4 1 2.6 2.6 1-.4c.5.3 1.1.5 1.7.6l.5 1.3a8.8 8.8 0 0 0 3.6 0l.5-1.3c.6-.1 1.2-.3 1.7-.6l1 .4 2.6-2.6Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 

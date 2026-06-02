@@ -6,7 +6,6 @@ import { useLibrary } from './hooks/useLibrary';
 import { recommend, listAwards } from './api';
 import { T, type Lang } from './i18n';
 import { useBooks } from './hooks/useBooks';
-import { SettingsSheet } from './components/SettingsSheet';
 import { MovieDetail } from './components/MovieDetail';
 import { SearchSheet } from './components/SearchSheet';
 import { BooksScreen } from './components/books/BooksScreen';
@@ -84,7 +83,6 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
   const uiById = useMemo(() => new Map(uiMovies.map((m) => [String(m.id), m])), [uiMovies]);
 
   const [view, setView] = useState<View>({ name: 'watchlist' });
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [selected, setSelected] = useState<UiMovie | null>(null);
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
@@ -175,14 +173,6 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
     return <BooksScreen onBack={() => setView({ name: 'watchlist' })} />;
   }
 
-  const settingsSheet = settingsOpen ? (
-    <SettingsSheet
-      onClose={() => setSettingsOpen(false)}
-      onOpenShare={onOpenShare}
-      onOpenAuth={onOpenAuth}
-    />
-  ) : null;
-
   const detailModal = (
     <MovieDetail
       lang={lang}
@@ -222,13 +212,12 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
         <WatchlistEmpty
           userName={userName}
           curated={recFilms}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAuth={onOpenAuth}
           onOpenSearch={() => setView({ name: 'search' })}
           onOpenBooks={() => setView({ name: 'books' })}
           onSave={saveAwardRec}
           onSelectFilm={openAwardDetail}
         />
-        {settingsSheet}
         {detailModal}
       </>
     );
@@ -242,14 +231,14 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
         recommendations={recFilms}
         bookCount={bookCount}
         onOpenTonight={() => setView({ name: 'tonight-pick' })}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenAuth={onOpenAuth}
+        onShare={onOpenShare}
         onOpenSearch={() => setView({ name: 'search' })}
         onOpenBooks={() => setView({ name: 'books' })}
         onSelectFilm={openSavedDetail}
         onSelectRec={openAwardDetail}
         onSeeAllAwards={() => setView({ name: 'awards-all' })}
       />
-      {settingsSheet}
       {detailModal}
     </>
   );

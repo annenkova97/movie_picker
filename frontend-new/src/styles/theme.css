@@ -124,30 +124,6 @@
 }
 
 /* ============================================================
-   Light mode (web landing) — invert
-   ============================================================ */
-
-[data-theme="light"] {
-  --color-wine-deep: #FAF6EE;   /* cream as bg */
-  --color-wine: #FFFFFF;        /* white cards on cream bg */
-  --color-wine-light: #E5C9A0;  /* warm beige border */
-  --color-cream: #2A1830;       /* wine deep as text */
-  --color-cream-soft: #5A3760;  /* wine light as secondary */
-  /* gold stays the same */
-
-  /* Inverted muted-text steps: dark ink at matching opacities so cream-on-wine
-     captions stay legible once the surfaces flip to cream/white. */
-  --cream-92: rgba(42, 24, 48, 0.92);
-  --cream-85: rgba(42, 24, 48, 0.82);
-  --cream-70: rgba(42, 24, 48, 0.65);
-  --cream-60: rgba(42, 24, 48, 0.55);
-  --cream-55: rgba(42, 24, 48, 0.50);
-  --cream-50: rgba(42, 24, 48, 0.45);
-
-  --wine-light-border: rgba(90, 55, 96, 0.20);
-}
-
-/* ============================================================
    Type role helpers — apply to elements directly
    ============================================================ */
 

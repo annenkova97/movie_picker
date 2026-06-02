@@ -1,10 +1,8 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Lang } from './i18n';
-import type { ThemeName } from './theme';
 
 const LANG_KEY = 'lentochka.lang';
-const THEME_KEY = 'lentochka.theme';
 
 /**
  * Device language → default UI language.
@@ -32,8 +30,6 @@ export function detectDefaultLang(): Lang {
 interface SettingsState {
   lang: Lang;
   setLang: (l: Lang) => void;
-  theme: ThemeName;
-  setTheme: (t: ThemeName) => void;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -47,14 +43,11 @@ function readStored<T extends string>(key: string, fallback: T): T {
 }
 
 /**
- * Owns the two cross-cutting UI preferences (language + theme), persists them
- * to localStorage, and mirrors the active theme onto `<html data-theme>` so the
- * CSS-variable palette in theme.css can switch. Mirrors the AuthProvider shape.
+ * Owns the UI language preference and persists it. (Theme was removed — the app
+ * is dark-only for now.) Mirrors the AuthProvider shape.
  */
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(() => readStored<Lang>(LANG_KEY, detectDefaultLang()));
-  // Default to the dark wine palette — the brand look the app ships with today.
-  const [theme, setTheme] = useState<ThemeName>(() => readStored<ThemeName>(THEME_KEY, 'dark'));
 
   useEffect(() => {
     try {
@@ -62,14 +55,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [lang]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(THEME_KEY, theme);
-    } catch {}
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
-
-  const value: SettingsState = { lang, setLang, theme, setTheme };
+  const value: SettingsState = { lang, setLang };
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 

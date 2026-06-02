@@ -127,6 +127,77 @@ input::placeholder {
 }
 .wl-iconbtn:hover { background: var(--color-wine-light); }
 
+/* Account control in the header (replaces the old settings gear). */
+.wl-signin {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--gold-border);
+  background: var(--gold-tint-strong);
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.wl-signin:hover { background: var(--gold-tint-medium); }
+
+.wl-account { position: relative; flex: 0 0 auto; }
+.wl-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--wine-light-border);
+  background: var(--color-wine);
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.wl-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.wl-account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 200px;
+  background: var(--color-wine);
+  border: 1px solid var(--wine-light-border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 10px;
+  z-index: 30;
+}
+.wl-account-menu__name {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--cream-85);
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid var(--wine-light-border);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.wl-account-menu__logout {
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+}
+.wl-account-menu__logout:hover { background: var(--color-wine-light); }
+
 /* Search sheet — shared by movie (SearchSheet) and book (BookSearchSheet) search. */
 .ss-header {
   display: flex; align-items: flex-start; gap: 12px;
