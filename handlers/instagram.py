@@ -15,6 +15,7 @@ from backend.services.instagram_reader import (
 )
 from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
+from handlers.formatting import format_imdb_rating
 
 REEL_URL_RE = re.compile(
     r"https?://(www\.)?instagram\.com/(reel|reels)/[\w-]+/?",
@@ -186,7 +187,7 @@ def _format_film_caption(
     header = f"*{title}*" + (f" ({year})" if year else "")
     meta_parts: list[str] = []
     if imdb_rating:
-        meta_parts.append(f"★ {imdb_rating}")
+        meta_parts.append(f"★ {format_imdb_rating(imdb_rating)}")
     meta = " · ".join(meta_parts)
 
     if quote:

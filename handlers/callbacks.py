@@ -10,6 +10,7 @@ from backend import database as db
 from backend.config import MINI_APP_URL
 from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
+from handlers.formatting import imdb_suffix
 
 
 def _saved_confirmation_keyboard(movie_id: int) -> InlineKeyboardMarkup:
@@ -117,7 +118,7 @@ async def _handle_add(query, imdb_id: str, *, user_id: int):
         reply_markup=_saved_confirmation_keyboard(movie.id),
     )
 
-    rating = f", IMDb {movie.imdb_rating}" if movie.imdb_rating else ""
+    rating = imdb_suffix(movie.imdb_rating, ", IMDb ")
     await query.message.reply_text(
         f"*{movie.title}* — сохранила{rating}.",
         parse_mode="Markdown",
