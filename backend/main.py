@@ -12,7 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from backend import config
 from backend import database as db
 from backend.rate_limit import limiter
-from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares
+from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares, books
 from backend.services.awards_seed import sync_awards_catalog
 
 
@@ -73,6 +73,7 @@ app.include_router(instagram.router)
 app.include_router(telegram.router)
 app.include_router(awards.router)
 app.include_router(shares.router)
+app.include_router(books.router)
 app.include_router(health.router)
 
 # Статические файлы frontend (собранный Vite-бандл)

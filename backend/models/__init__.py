@@ -10,6 +10,18 @@ from backend.models.movie import (
     BulkImportItem,
     BulkImportRequest,
 )
+from backend.models.book import (
+    Book,
+    BookBase,
+    BookCreate,
+    BookUpdate,
+    BookSearchResult,
+    BookPreview,
+    BookRecommendationRequest,
+    BookRecommendationResponse,
+    BookBulkImportItem,
+    BookBulkImportRequest,
+)
 from backend.models.instagram import InstagramImportRequest
 from backend.models.telegram import TelegramImportRequest
 from backend.models.share import SharedListCreateRequest, SharedListResponse
@@ -28,6 +40,16 @@ __all__ = [
     "MovieBase",
     "MovieCreate",
     "MovieUpdate",
+    "Book",
+    "BookBase",
+    "BookCreate",
+    "BookUpdate",
+    "BookSearchResult",
+    "BookPreview",
+    "BookRecommendationRequest",
+    "BookRecommendationResponse",
+    "BookBulkImportItem",
+    "BookBulkImportRequest",
     "RecommendationRequest",
     "RecommendationResponse",
     "OMDBSearchResult",

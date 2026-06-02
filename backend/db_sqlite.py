@@ -4,12 +4,18 @@ from datetime import datetime
 from typing import Optional
 from backend.config import DATABASE_PATH
 from backend.models.movie import Movie, MovieBase
+from backend.models.book import Book, BookBase
 
 
 SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
     "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru"
+)
+
+BOOK_SELECT_COLUMNS = (
+    "id, work_key, title, authors, year, subjects, description, cover_url, "
+    "rating, is_read, source, rec_source, rec_note, in_library, added_at"
 )
 
 
@@ -175,6 +181,33 @@ async def init_db():
         await db.execute(
             "CREATE INDEX IF NOT EXISTS idx_shared_lists_expires "
             "ON shared_lists(expires_at)"
+        )
+
+        # books — параллельная фильмам таблица (книги из Open Library).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                work_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                authors TEXT DEFAULT '[]',
+                year INTEGER,
+                subjects TEXT DEFAULT '[]',
+                description TEXT,
+                cover_url TEXT,
+                rating REAL,
+                is_read BOOLEAN DEFAULT FALSE,
+                source TEXT DEFAULT 'personal',
+                rec_source TEXT,
+                rec_note TEXT,
+                in_library BOOLEAN DEFAULT 1,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_books_user_id ON books(user_id)")
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_books_user_work "
+            "ON books(user_id, work_key)"
         )
         await db.commit()
 
@@ -559,6 +592,161 @@ async def delete_movie(movie_id: int, user_id: int) -> bool:
 async def get_unwatched_movies(user_id: int) -> list[Movie]:
     """Непросмотренные фильмы пользователя для рекомендаций."""
     return await get_all_movies(user_id=user_id, is_watched=False, in_library=True)
+
+
+# ----- books ---------------------------------------------------------------
+
+
+def _row_to_book(row: aiosqlite.Row) -> Book:
+    return Book(
+        id=row[0],
+        work_key=row[1],
+        title=row[2],
+        authors=json.loads(row[3]) if row[3] else [],
+        year=row[4],
+        subjects=json.loads(row[5]) if row[5] else [],
+        description=row[6],
+        cover_url=row[7],
+        rating=row[8],
+        is_read=bool(row[9]),
+        source=row[10],
+        rec_source=row[11],
+        rec_note=row[12],
+        in_library=bool(row[13]) if row[13] is not None else True,
+        added_at=datetime.fromisoformat(row[14]) if row[14] else datetime.now(),
+    )
+
+
+async def get_all_books(
+    user_id: int,
+    source: Optional[str] = None,
+    is_read: Optional[bool] = None,
+    in_library: Optional[bool] = None,
+) -> list[Book]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        query = f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE user_id = ?"
+        params: list = [user_id]
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        if is_read is not None:
+            query += " AND is_read = ?"
+            params.append(1 if is_read else 0)
+        if in_library is not None:
+            query += " AND in_library = ?"
+            params.append(1 if in_library else 0)
+        query += " ORDER BY added_at DESC"
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [_row_to_book(row) for row in rows]
+
+
+async def get_unread_books(user_id: int) -> list[Book]:
+    """Непрочитанные книги пользователя для рекомендаций."""
+    return await get_all_books(user_id=user_id, is_read=False, in_library=True)
+
+
+async def get_user_book_by_id(book_id: int, user_id: int) -> Optional[Book]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE id = ? AND user_id = ?",
+            (book_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return _row_to_book(row) if row else None
+
+
+async def get_user_book_by_work_key(work_key: str, user_id: int) -> Optional[Book]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE work_key = ? AND user_id = ?",
+            (work_key, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return _row_to_book(row) if row else None
+
+
+async def add_book(
+    book: BookBase,
+    user_id: int,
+    source: str = "personal",
+    rec_source: Optional[str] = None,
+    rec_note: Optional[str] = None,
+    in_library: bool = True,
+) -> Book:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute("""
+            INSERT INTO books (
+                user_id, work_key, title, authors, year, subjects, description,
+                cover_url, rating, source, rec_source, rec_note, in_library
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            book.work_key,
+            book.title,
+            json.dumps(book.authors),
+            book.year,
+            json.dumps(book.subjects),
+            book.description,
+            book.cover_url,
+            book.rating,
+            source,
+            rec_source,
+            rec_note,
+            1 if in_library else 0,
+        ))
+        await db.commit()
+        book_id = cursor.lastrowid
+        async with db.execute(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE id = ?", (book_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return _row_to_book(row)
+
+
+async def update_book(
+    book_id: int,
+    user_id: int,
+    is_read: Optional[bool] = None,
+    rec_source: Optional[str] = None,
+    rec_note: Optional[str] = None,
+    in_library: Optional[bool] = None,
+) -> Optional[Book]:
+    sets = []
+    params: list = []
+    if is_read is not None:
+        sets.append("is_read = ?")
+        params.append(1 if is_read else 0)
+    if rec_source is not None:
+        sets.append("rec_source = ?")
+        params.append(rec_source)
+    if rec_note is not None:
+        sets.append("rec_note = ?")
+        params.append(rec_note)
+    if in_library is not None:
+        sets.append("in_library = ?")
+        params.append(1 if in_library else 0)
+    if not sets:
+        return await get_user_book_by_id(book_id, user_id)
+
+    params.extend([book_id, user_id])
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            f"UPDATE books SET {', '.join(sets)} WHERE id = ? AND user_id = ?",
+            params,
+        )
+        await db.commit()
+        return await get_user_book_by_id(book_id, user_id)
+
+
+async def delete_book(book_id: int, user_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM books WHERE id = ? AND user_id = ?",
+            (book_id, user_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 # ----- shared lists --------------------------------------------------------

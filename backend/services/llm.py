@@ -2,6 +2,7 @@ import anthropic
 from typing import Optional
 from backend.config import ANTHROPIC_API_KEY
 from backend.models.movie import Movie
+from backend.models.book import Book
 
 
 class LLMService:
@@ -110,6 +111,57 @@ class LLMService:
 ОБЪЯСНЕНИЕ: Почему эти фильмы подходят под запрос (2-3 предложения на русском).
 
 Если ни один фильм не подходит, напиши:
+РЕКОМЕНДАЦИИ: []
+ОБЪЯСНЕНИЕ: Причина, почему ничего не подходит."""
+
+        message = await self.client.messages.create(
+            model=self.model,
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        response_text = message.content[0].text.strip()
+        return self._parse_recommendation_response(response_text)
+
+    async def recommend_books(
+        self,
+        user_query: str,
+        books: list[Book],
+        max_recommendations: int = 3
+    ) -> tuple[list[int], str]:
+        """Подбор книги под настроение. Возвращает список ID книг и объяснение.
+
+        Делит парсер ответа с ``recommend_movies`` — формат вывода идентичный.
+        """
+        if not books:
+            return [], "В вашем списке пока нет книг для рекомендаций."
+
+        books_info = []
+        for b in books:
+            info = f"[ID:{b.id}] «{b.title}» ({b.year or 'год неизвестен'})"
+            if b.authors:
+                info += f" — {', '.join(b.authors[:2])}"
+            if b.subjects:
+                info += f" | Темы: {', '.join(b.subjects[:3])}"
+            if b.description:
+                info += f" | {b.description[:200]}"
+            books_info.append(info)
+
+        books_text = "\n".join(books_info)
+
+        prompt = f"""Ты — помощник по выбору книг. Пользователь хочет почитать что-то из своего списка.
+
+Запрос пользователя: "{user_query}"
+
+Список книг пользователя (непрочитанные):
+{books_text}
+
+Выбери от 1 до {max_recommendations} наиболее подходящих книг.
+Отвечай строго в формате:
+РЕКОМЕНДАЦИИ: [ID1, ID2, ID3]
+ОБЪЯСНЕНИЕ: Почему эти книги подходят под запрос (2-3 предложения на русском).
+
+Если ни одна книга не подходит, напиши:
 РЕКОМЕНДАЦИИ: []
 ОБЪЯСНЕНИЕ: Причина, почему ничего не подходит."""
 
