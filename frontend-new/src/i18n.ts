@@ -114,7 +114,7 @@ export const T = {
   quickResultsHintMany: { ru: 'Нашли %n вариантов — нажми чтобы узнать подробности:',
                           en: 'Found %n — tap for details:' } as Pair,
   quickDetailsToggle: { ru: '▾ подробнее',       en: '▾ details' } as Pair,
-  quickAddToList: { ru: '+ Сохранить',           en: '+ Save' } as Pair,
+  quickAddToList: { ru: '+ Хочу посмотреть',     en: '+ To watch' } as Pair,
   quickAddTooltip: { ru: 'Быстро добавить в список', en: 'Quick add to watchlist' } as Pair,
   quickCancel:    { ru: '✕ Отмена',              en: '✕ Cancel' } as Pair,
 
@@ -141,7 +141,7 @@ export const T = {
   pickMoodTitle: { ru: 'Какое настроение?',       en: 'What’s the mood?' } as Pair,
   awardsSub:     { ru: 'Оскар, Золотой глобус, Канны', en: 'Oscar, Golden Globe, Cannes' } as Pair,
   awardsEmpty:   { ru: 'Каталог пока пуст',      en: 'Catalog is empty for now' } as Pair,
-  addToWatch:    { ru: '+ Сохранить',            en: '+ Save' } as Pair,
+  addToWatch:    { ru: '+ Хочу посмотреть',      en: '+ To watch' } as Pair,
   addToWatched:  { ru: '✓ Уже смотрел',          en: '✓ Already watched' } as Pair,
   inMyLibrary:   { ru: 'уже на полке',           en: 'already on your shelf' } as Pair,
 
