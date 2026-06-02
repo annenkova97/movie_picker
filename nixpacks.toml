@@ -1,6 +1,22 @@
 # Railway / Nixpacks build config.
-# Adds ffmpeg (used for audio extraction → Whisper) on top of the
-# Python defaults that nixpacks auto-detects from requirements.txt.
+#
+# Two languages in one service:
+#   - Python (auto-detected from requirements.txt) → runs the FastAPI app.
+#   - Node   → builds the Vite frontend into ./frontend, which FastAPI serves.
+#
+# ffmpeg-full is needed for audio extraction → Whisper.
+# nodejs_20 brings node + npm so the build phase can compile the frontend.
 
 [phases.setup]
-nixPkgs = ["...", "ffmpeg-full"]
+nixPkgs = ["...", "ffmpeg-full", "nodejs_20"]
+
+# Build the frontend during the image build so the served bundle always matches
+# the committed source. Runs after the auto Python install phase. We keep the
+# pre-built bundle committed in ./frontend as a fallback if this ever fails.
+# --include=dev is required because the build needs vite/tsc (devDependencies),
+# which npm would otherwise skip when NODE_ENV=production on the builder.
+[phases.build]
+cmds = [
+  "npm --prefix frontend-new install --include=dev --no-audit --no-fund",
+  "npm --prefix frontend-new run build",
+]

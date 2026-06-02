@@ -23,6 +23,14 @@ were fixed in this iteration; the rest are recommended follow-ups.
    - `JWT_SECRET` is a real 32-byte secret (the app already refuses to start
      without one — good).
 
+3b. **Frontend build on deploy.** Railway serves the committed `frontend/`
+    bundle; previously there was **no build step**, so frontend source changes
+    never reached prod until the bundle was rebuilt and committed by hand. Fixed
+    by adding `nodejs_20` + a `npm run build` build phase to `nixpacks.toml`
+    (✅). The committed bundle is kept as a fallback. After confirming the
+    Railway build runs the frontend compile, `frontend/` could be removed from
+    git entirely.
+
 ## P1 — strongly recommended
 
 4. **CI** — added `.github/workflows/ci.yml` (✅) running `pytest` + `tsc` +
