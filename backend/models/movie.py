@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
@@ -30,6 +30,9 @@ class Movie(MovieBase):
     in_library: bool = True  # True — на полке пользователя; False — только в каталоге наград
     award: Optional[str] = None  # "Oscar Best Picture", "Palme d'Or", ...
     award_year: Optional[int] = None  # год награды (может отличаться от year выпуска)
+    user_rating: Optional[float] = None  # личная оценка 1–5 (дневник), None — не оценено
+    user_note: Optional[str] = None  # личная заметка/отзыв «чтобы не забыть»
+    watched_at: Optional[datetime] = None  # когда отмечен просмотренным (ставится автоматически)
     added_at: datetime
 
 
@@ -45,6 +48,8 @@ class MovieUpdate(BaseModel):
     is_watched: Optional[bool] = None
     rec_source: Optional[str] = None
     rec_note: Optional[str] = None
+    user_rating: Optional[float] = Field(None, ge=0, le=5)  # 0 — очистить оценку
+    user_note: Optional[str] = None
 
 
 class RecommendationRequest(BaseModel):

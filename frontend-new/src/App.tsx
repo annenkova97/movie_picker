@@ -107,6 +107,7 @@ function AppShell() {
       <WatchlistEmpty
         userName="Настя"
         curated={SAMPLE_RECS}
+        bookCount={0}
         onOpenAuth={() => console.log('[empty:open-auth]')}
         onOpenSearch={() => console.log('[empty:open-search]')}
         onOpenBooks={() => console.log('[empty:open-books]')}

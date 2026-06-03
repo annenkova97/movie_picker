@@ -2,6 +2,7 @@ import type { Lang } from '../i18n';
 import { T } from '../i18n';
 import type { UiMovie } from '../types';
 import { TypoPoster } from './TypoPoster';
+import { DiaryEditor, type DiaryInput } from './DiaryEditor';
 
 interface Props {
   lang: Lang;
@@ -12,6 +13,8 @@ interface Props {
   onSaveAsWatched?: (m: UiMovie) => void;
   onToggleWatched?: (m: UiMovie) => void;
   onRemove?: (m: UiMovie) => void;
+  /** Save personal rating + note for a watched, in-library movie. */
+  onSaveDiary?: (m: UiMovie, diary: DiaryInput) => Promise<void> | void;
 }
 
 /**
@@ -22,6 +25,7 @@ interface Props {
  */
 export function MovieDetail({
   lang, movie, saving, onClose, onSaveToWatch, onSaveAsWatched, onToggleWatched, onRemove,
+  onSaveDiary,
 }: Props) {
   if (!movie) return null;
 
@@ -74,6 +78,16 @@ export function MovieDetail({
             )}
           </div>
         </div>
+
+        {movie.inLibrary && movie.watched && onSaveDiary && (
+          <DiaryEditor
+            lang={lang}
+            key={movie.id}
+            initialRating={movie.userRating ?? 0}
+            initialNote={movie.userNote ?? ''}
+            onSave={(diary) => onSaveDiary(movie, diary)}
+          />
+        )}
 
         <div className="md-actions">
           {!movie.inLibrary && onSaveToWatch && (

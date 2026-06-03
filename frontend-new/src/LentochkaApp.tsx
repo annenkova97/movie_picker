@@ -184,6 +184,11 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
       onToggleWatched={(m) =>
         lib.patch.mutateAsync({ id: m.id, fields: { is_watched: !m.watched } }).finally(() => setSelected(null))}
       onRemove={(m) => lib.remove.mutateAsync(m.id).finally(() => setSelected(null))}
+      onSaveDiary={(m, diary) =>
+        lib.patch.mutateAsync({
+          id: m.id,
+          fields: { user_rating: diary.rating, user_note: diary.note },
+        }).then(() => undefined)}
     />
   );
 
@@ -212,6 +217,7 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
         <WatchlistEmpty
           userName={userName}
           curated={recFilms}
+          bookCount={bookCount}
           onOpenAuth={onOpenAuth}
           onOpenSearch={() => setView({ name: 'search' })}
           onOpenBooks={() => setView({ name: 'books' })}
@@ -325,6 +331,7 @@ function uiMovieToSavedFilm(m: UiMovie, lang: Lang): SavedFilm {
     genre,
     runtime: formatRuntime(m.runtime),
     rating: m.publicRating,
+    userRating: m.userRating,
     italic: m.why ?? m.recNote ?? '',
     source: sourceCaption(m.recSource, lang),
     streaming: undefined,

@@ -1,6 +1,7 @@
 import type { Lang } from '../i18n';
 import { T } from '../i18n';
 import { bookHue, cleanBookCover, type ApiBook } from '../types';
+import { DiaryEditor, type DiaryInput } from './DiaryEditor';
 
 interface Props {
   lang: Lang;
@@ -11,11 +12,24 @@ interface Props {
   onSaveRead?: (b: ApiBook) => void;
   onToggleRead?: (b: ApiBook) => void;
   onRemove?: (b: ApiBook) => void;
+  /** Save personal rating + note for a read, in-library book. */
+  onSaveDiary?: (b: ApiBook, diary: DiaryInput) => Promise<void> | void;
+}
+
+/** External link target — Google Books for gb: keys, else Open Library. */
+function bookExternalLink(workKey: string): { href: string; label: string } {
+  if (workKey.startsWith('gb:')) {
+    return {
+      href: `https://books.google.com/books?id=${encodeURIComponent(workKey.slice(3))}`,
+      label: 'Google Books',
+    };
+  }
+  return { href: `https://openlibrary.org/works/${workKey}`, label: 'Open Library' };
 }
 
 /** Book detail modal, wine-deep styled. The books analogue of MovieDetail. */
 export function BookDetail({
-  lang, book, saving, onClose, onSaveWant, onSaveRead, onToggleRead, onRemove,
+  lang, book, saving, onClose, onSaveWant, onSaveRead, onToggleRead, onRemove, onSaveDiary,
 }: Props) {
   if (!book) return null;
 
@@ -24,6 +38,7 @@ export function BookDetail({
   const authors = book.authors.length ? book.authors.join(' · ') : T.bookAuthorless[lang];
   const meta = [authors, book.year || null].filter(Boolean).join(' · ');
   const hue = bookHue(book);
+  const ext = bookExternalLink(book.work_key);
 
   return (
     <div className="bd-overlay" onClick={onClose} role="dialog" aria-modal="true">
@@ -67,6 +82,16 @@ export function BookDetail({
           </div>
         </div>
 
+        {inLibrary && book.is_read && onSaveDiary && (
+          <DiaryEditor
+            lang={lang}
+            key={book.id}
+            initialRating={book.user_rating ?? 0}
+            initialNote={book.user_note ?? ''}
+            onSave={(diary) => onSaveDiary(book, diary)}
+          />
+        )}
+
         <div className="bd-actions">
           {!inLibrary && onSaveWant && (
             <button className="bd-btn bd-btn--primary" onClick={() => onSaveWant(book)} disabled={saving}>
@@ -96,10 +121,10 @@ export function BookDetail({
           <span className="bd-spacer" />
           <a
             className="bd-link"
-            href={`https://openlibrary.org/works/${book.work_key}`}
+            href={ext.href}
             target="_blank"
             rel="noreferrer noopener"
-          >↗ Open Library</a>
+          >↗ {ext.label}</a>
         </div>
 
         <style>{styles}</style>

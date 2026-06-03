@@ -44,14 +44,18 @@ def _auth(token: str) -> dict[str, str]:
 
 
 def _patch_openlibrary(search=None, by_key=BOOK):
-    """Patch both Open Library calls used by the books router."""
+    """Patch the book-search dispatcher used by the books router.
+
+    (Named for history; the router now goes through ``book_search`` which
+    fronts Google Books + Open Library.)
+    """
     return (
         patch(
-            "backend.routers.books.openlibrary_service.get_book_by_key",
+            "backend.routers.books.book_search.get_book_by_key",
             new=AsyncMock(return_value=by_key),
         ),
         patch(
-            "backend.routers.books.openlibrary_service.search_books",
+            "backend.routers.books.book_search.search_books",
             new=AsyncMock(return_value=search if search is not None else [SEARCH_HIT]),
         ),
     )
@@ -134,6 +138,88 @@ async def test_books_are_per_user(client):
     r = await client.get("/api/books", headers=_auth(token_b))
     assert r.status_code == 200
     assert r.json() == []
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_prefers_google_books(client):
+    """book_search returns Google Books hits without touching Open Library."""
+    from backend.services import book_search
+
+    gb_hit = BookSearchResult(
+        work_key="gb:abc123", title="Часть речи", author="Иосиф Бродский",
+        year="1977", cover_url=None,
+    )
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books",
+        new=AsyncMock(return_value=[gb_hit]),
+    ) as gb, patch(
+        "backend.services.book_search.openlibrary_service.search_books",
+        new=AsyncMock(return_value=[SEARCH_HIT]),
+    ) as ol:
+        results = await book_search.search_books("Бродский")
+
+    assert [r.work_key for r in results] == ["gb:abc123"]
+    # Кириллица → langRestrict=ru, и Open Library не дёргался.
+    assert gb.call_args.kwargs.get("prefer_lang") == "ru"
+    ol.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_dispatcher_falls_back_to_open_library(client):
+    """When Google Books returns nothing, Open Library is used."""
+    from backend.services import book_search
+
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "backend.services.book_search.openlibrary_service.search_books",
+        new=AsyncMock(return_value=[SEARCH_HIT]),
+    ) as ol:
+        results = await book_search.search_books("hobbit")
+
+    assert [r.work_key for r in results] == ["OL45804W"]
+    ol.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_book_by_key_dispatches_by_prefix(client):
+    """gb: keys go to Google Books, OL…W keys to Open Library."""
+    from backend.services import book_search
+
+    gb_book = BookBase(work_key="gb:abc123", title="Часть речи", authors=["Иосиф Бродский"])
+    with patch(
+        "backend.services.book_search.googlebooks_service.get_book_by_key",
+        new=AsyncMock(return_value=gb_book),
+    ) as gb, patch(
+        "backend.services.book_search.openlibrary_service.get_book_by_key",
+        new=AsyncMock(return_value=BOOK),
+    ) as ol:
+        from_gb = await book_search.get_book_by_key("gb:abc123")
+        from_ol = await book_search.get_book_by_key("OL45804W")
+
+    assert from_gb.work_key == "gb:abc123"
+    assert from_ol.work_key == "OL45804W"
+    gb.assert_awaited_once()
+    ol.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_brodsky_search_endpoint_returns_hits(client):
+    """Regression for the original complaint: «Бродский» finds books now."""
+    gb_hit = BookSearchResult(
+        work_key="gb:zzz", title="Стихотворения", author="Иосиф Бродский",
+        year="1965", cover_url=None,
+    )
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books",
+        new=AsyncMock(return_value=[gb_hit]),
+    ):
+        r = await client.get("/api/books/search?q=Бродский")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body) == 1
+    assert body[0]["author"] == "Иосиф Бродский"
 
 
 @pytest.mark.asyncio

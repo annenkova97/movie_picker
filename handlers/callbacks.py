@@ -1,13 +1,15 @@
 from telegram import (
+    ForceReply,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Update,
     WebAppInfo,
 )
-from telegram.ext import ContextTypes
+from telegram.ext import ApplicationHandlerStop, ContextTypes
 
 from backend import database as db
 from backend.config import MINI_APP_URL
+from backend.services import book_search
 from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
 from handlers.formatting import imdb_suffix
@@ -78,6 +80,14 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_delete(query, int(value), user_id=user_id)
     elif action == "wrong":
         await _handle_wrong(query, int(value), user_id=user_id)
+    elif action == "addbook":
+        await _handle_add_book(query, value, user_id=user_id)
+    elif action == "readbook":
+        await _handle_read(query, int(value), user_id=user_id, read=True)
+    elif action == "unreadbook":
+        await _handle_read(query, int(value), user_id=user_id, read=False)
+    elif action == "rate":
+        await _handle_rate(query, value, user_id=user_id, context=context)
 
 
 async def _handle_add(query, imdb_id: str, *, user_id: int):
@@ -149,6 +159,126 @@ async def _handle_watch(query, movie_id: int, *, user_id: int, watched: bool):
     await query.message.reply_text(
         f"*{movie.title}* — {status}", parse_mode="Markdown"
     )
+    if watched:
+        await query.message.reply_text(
+            "Как тебе? Поставь оценку:",
+            reply_markup=_rating_keyboard("movie", movie.id),
+        )
+
+
+# ── books ──────────────────────────────────────────────────────────────────
+
+
+async def _handle_add_book(query, work_key: str, *, user_id: int):
+    """Сохраняет книгу в библиотеку и переключает карточку в подтверждение."""
+    existing = await db.get_user_book_by_work_key(work_key, user_id)
+    if existing:
+        await query.edit_message_reply_markup(
+            reply_markup=_book_saved_keyboard(existing.id, existing.is_read),
+        )
+        await query.message.reply_text(f"«{existing.title}» уже в твоих книгах.")
+        return
+
+    book_base = await book_search.get_book_by_key(work_key)
+    if not book_base:
+        await query.message.reply_text("Не получилось загрузить книгу.")
+        return
+
+    book = await db.add_book(book_base, user_id=user_id, source="telegram")
+    await query.edit_message_reply_markup(
+        reply_markup=_book_saved_keyboard(book.id, book.is_read),
+    )
+    await query.message.reply_text(
+        f"*{book.title}* — сохранила в книги.", parse_mode="Markdown",
+    )
+
+
+async def _handle_read(query, book_id: int, *, user_id: int, read: bool):
+    """Отметить книгу прочитанной/непрочитанной."""
+    book = await db.update_book(book_id, user_id=user_id, is_read=read)
+    if not book:
+        await query.message.reply_text("Книгу не нашла.")
+        return
+
+    status = "прочитана ✅" if read else "вернула к чтению 📚"
+    await query.edit_message_reply_markup(
+        reply_markup=_book_saved_keyboard(book.id, book.is_read),
+    )
+    await query.message.reply_text(f"*{book.title}* — {status}", parse_mode="Markdown")
+    if read:
+        await query.message.reply_text(
+            "Как тебе? Поставь оценку:",
+            reply_markup=_rating_keyboard("book", book.id),
+        )
+
+
+def _book_saved_keyboard(book_id: int, is_read: bool) -> InlineKeyboardMarkup:
+    """Ряд действий под сохранённой книгой."""
+    read_btn = (
+        InlineKeyboardButton("↺ Не прочитана", callback_data=f"unreadbook:{book_id}")
+        if is_read
+        else InlineKeyboardButton("✓ Прочитана", callback_data=f"readbook:{book_id}")
+    )
+    return InlineKeyboardMarkup([[read_btn]])
+
+
+# ── rating (diary on bot) ───────────────────────────────────────────────────
+
+
+def _rating_keyboard(kind: str, item_id: int) -> InlineKeyboardMarkup:
+    """Ряд из пяти звёзд. callback ``rate:<kind>:<id>:<n>``."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("⭐" * n, callback_data=f"rate:{kind}:{item_id}:{n}")
+        for n in range(1, 6)
+    ]])
+
+
+async def _handle_rate(query, value: str, *, user_id: int, context):
+    """Сохраняет личную оценку и предлагает добавить заметку (ForceReply)."""
+    try:
+        kind, id_str, n_str = value.split(":")
+        item_id, rating = int(id_str), int(n_str)
+    except ValueError:
+        return
+
+    if kind == "movie":
+        await db.update_movie(item_id, user_id=user_id, user_rating=rating)
+    else:
+        await db.update_book(item_id, user_id=user_id, user_rating=rating)
+
+    await query.edit_message_text(f"Оценка {'⭐' * rating} сохранена.")
+    # Запоминаем, к чему относится следующая текстовая заметка-ответ.
+    context.user_data["await_note"] = (kind, item_id)
+    await query.message.reply_text(
+        "Хочешь оставить заметку на память? Ответь на это сообщение "
+        "(или просто пропусти).",
+        reply_markup=ForceReply(selective=True),
+    )
+
+
+async def note_reply_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ловит ответ-заметку после оценки. Регистрируется в группе -1.
+
+    Если ждём заметку (``await_note`` в user_data) — сохраняем и стопаем
+    дальнейшую обработку; иначе молча пропускаем, чтобы обычный текст ушёл
+    в text_handler.
+    """
+    pending = context.user_data.get("await_note")
+    if not pending:
+        return
+    kind, item_id = pending
+    context.user_data.pop("await_note", None)
+
+    note = (update.message.text or "").strip()
+    user_row = await _get_or_create_user(update.effective_user)
+    uid = user_row["id"]
+    if kind == "movie":
+        await db.update_movie(item_id, user_id=uid, user_note=note)
+    else:
+        await db.update_book(item_id, user_id=uid, user_note=note)
+
+    await update.message.reply_text("Записала ✍️")
+    raise ApplicationHandlerStop
 
 
 async def _handle_delete(query, movie_id: int, *, user_id: int):

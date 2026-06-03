@@ -146,7 +146,13 @@ async def update_movie(
     if not movie:
         raise HTTPException(status_code=404, detail="Фильм не найден")
 
-    if update.is_watched is None and update.rec_source is None and update.rec_note is None:
+    if (
+        update.is_watched is None
+        and update.rec_source is None
+        and update.rec_note is None
+        and update.user_rating is None
+        and update.user_note is None
+    ):
         return movie
 
     return await db.update_movie(
@@ -155,6 +161,8 @@ async def update_movie(
         is_watched=update.is_watched,
         rec_source=update.rec_source,
         rec_note=update.rec_note,
+        user_rating=update.user_rating,
+        user_note=update.user_note,
     )
 
 

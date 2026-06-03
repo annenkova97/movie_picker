@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
@@ -23,6 +23,9 @@ class Book(BookBase):
     rec_source: Optional[str] = None
     rec_note: Optional[str] = None
     in_library: bool = True
+    user_rating: Optional[float] = None  # личная оценка 1–5 (дневник)
+    user_note: Optional[str] = None      # личная заметка/отзыв
+    read_at: Optional[datetime] = None   # когда отмечена прочитанной (ставится автоматически)
     added_at: datetime
 
 
@@ -37,6 +40,8 @@ class BookUpdate(BaseModel):
     is_read: Optional[bool] = None
     rec_source: Optional[str] = None
     rec_note: Optional[str] = None
+    user_rating: Optional[float] = Field(None, ge=0, le=5)  # 0 — очистить оценку
+    user_note: Optional[str] = None
 
 
 class BookSearchResult(BaseModel):

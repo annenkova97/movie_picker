@@ -11,6 +11,8 @@ export interface SavedFilm {
   genre: string;
   runtime: string;
   rating: number;
+  /** Personal diary rating 1–5 (distinct from the public IMDb score). */
+  userRating?: number | null;
   /** Italic 'why-saved' phrase that preserves the original recommendation's emotional energy. */
   italic: string;
   source: string;
@@ -197,6 +199,9 @@ function SavedFilmCard({ film, onClick }: { film: SavedFilm; onClick: () => void
         <div className="wl-card__italic">«{film.italic}»</div>
         <div className="wl-card__bottom">
           <span className="wl-card__source">{film.source}</span>
+          {film.userRating ? (
+            <span className="wl-card__myrating" title="моя оценка">★ {film.userRating}</span>
+          ) : null}
           {film.streaming && (
             <span
               className={`wl-card__streaming${film.streaming === 'Кинопоиск' ? '' : ' is-neutral'}`}
@@ -728,6 +733,14 @@ const styles = `
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.wl-card__myrating {
+  flex: 0 0 auto;
+  color: var(--color-gold);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
 }
 .wl-card__streaming {
   flex: 0 0 auto;

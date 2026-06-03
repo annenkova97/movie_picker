@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth';
 import { getBookLibrary } from '../bookLibrary';
+import type { BookPatch } from '../api';
 
 /**
  * Single entry-point the UI uses to read and mutate the user's book library.
@@ -28,7 +29,7 @@ export function useBooks() {
   });
 
   const patch = useMutation({
-    mutationFn: ({ id, fields }: { id: number; fields: { is_read?: boolean } }) =>
+    mutationFn: ({ id, fields }: { id: number; fields: BookPatch }) =>
       lib.patch(id, fields),
     onSuccess: invalidate,
   });

@@ -8,6 +8,7 @@
  */
 
 import type { ApiBook } from './types';
+import type { BookPatch } from './api';
 import {
   addBookByKey,
   addBookByQuery,
@@ -88,7 +89,7 @@ export interface BookLibrary {
   list(): Promise<ApiBook[]>;
   saveByWorkKey(workKey: string, isRead: boolean): Promise<ApiBook>;
   addByQuery(query: string): Promise<ApiBook>;
-  patch(id: number, fields: { is_read?: boolean }): Promise<ApiBook>;
+  patch(id: number, fields: BookPatch): Promise<ApiBook>;
   remove(id: number): Promise<void>;
 }
 
@@ -109,7 +110,7 @@ class BackendBookLibrary implements BookLibrary {
     return addBookByQuery(query);
   }
 
-  patch(id: number, fields: { is_read?: boolean }) {
+  patch(id: number, fields: BookPatch) {
     return patchBook(id, fields);
   }
 
@@ -151,11 +152,18 @@ class LocalBookLibrary implements BookLibrary {
     return this.saveByWorkKey(results[0].work_key, false);
   }
 
-  async patch(id: number, fields: { is_read?: boolean }): Promise<ApiBook> {
+  async patch(id: number, fields: BookPatch): Promise<ApiBook> {
     const all = readLocal();
     const book = all.find((b) => b.id === id);
     if (!book) throw new Error('Book not found in local library');
-    if (fields.is_read !== undefined) book.is_read = fields.is_read;
+    if (fields.is_read !== undefined) {
+      book.is_read = fields.is_read;
+      if (fields.is_read && !book.read_at) book.read_at = nowIso();
+    }
+    if (fields.user_rating !== undefined) {
+      book.user_rating = fields.user_rating && fields.user_rating > 0 ? fields.user_rating : null;
+    }
+    if (fields.user_note !== undefined) book.user_note = fields.user_note || null;
     writeLocal(all);
     return book;
   }

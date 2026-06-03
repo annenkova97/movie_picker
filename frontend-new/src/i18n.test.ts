@@ -49,6 +49,7 @@ describe('i18n', () => {
       'greetingBack', 'friend', 'wlTitle',
       'wlFilterAll', 'wlFilterMovies', 'wlFilterSeries', 'wlFilterBooks',
       'wlRecent', 'wlSortByDate', 'wlRecsEyebrow', 'wlRecsTitle', 'wlSeeAll',
+      'wlBooksEyebrow', 'wlBooksTitle', 'wlBooksOpenList',
       'tonightEyebrow', 'tonightTitle', 'tonightSubtitle',
       'settingsAria', 'searchAria', 'emptyHeroTitle', 'emptyHeroSub',
       'recSrcInstagram', 'recSrcTelegram', 'recSrcFriends', 'recSrcPersonal',

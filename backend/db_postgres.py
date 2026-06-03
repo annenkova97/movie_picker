@@ -21,12 +21,14 @@ from backend.models.book import Book, BookBase
 SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
-    "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru"
+    "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
+    "user_rating, user_note, watched_at"
 )
 
 BOOK_SELECT_COLUMNS = (
     "id, work_key, title, authors, year, subjects, description, cover_url, "
-    "rating, is_read, source, rec_source, rec_note, in_library, added_at"
+    "rating, is_read, source, rec_source, rec_note, in_library, added_at, "
+    "user_rating, user_note, read_at"
 )
 
 _pool: Optional[asyncpg.Pool] = None
@@ -106,6 +108,10 @@ async def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_imdb "
             "ON movies(user_id, imdb_id) WHERE user_id IS NOT NULL"
         )
+        # Дневник для фильмов: личная оценка/заметка/дата просмотра.
+        await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS user_rating REAL")
+        await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS user_note TEXT")
+        await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS watched_at TIMESTAMP")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS shared_lists (
                 id SERIAL PRIMARY KEY,
@@ -150,6 +156,10 @@ async def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_books_user_work "
             "ON books(user_id, work_key) WHERE user_id IS NOT NULL"
         )
+        # Дневник для книг: личная оценка/заметка/дата прочтения.
+        await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS user_rating REAL")
+        await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS user_note TEXT")
+        await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS read_at TIMESTAMP")
 
 
 def _row_to_movie(row) -> Movie:
@@ -178,6 +188,11 @@ def _row_to_movie(row) -> Movie:
         award=row[19],
         award_year=row[20],
         plot_ru=row[21],
+        user_rating=row[22],
+        user_note=row[23],
+        watched_at=row[24] if (row[24] is None or isinstance(row[24], datetime)) else (
+            datetime.fromisoformat(str(row[24])) if row[24] else None
+        ),
     )
 
 
@@ -436,6 +451,8 @@ async def update_movie(
     rec_source: Optional[str] = None,
     rec_note: Optional[str] = None,
     in_library: Optional[bool] = None,
+    user_rating: Optional[float] = None,
+    user_note: Optional[str] = None,
 ) -> Optional[Movie]:
     sets = []
     params: list = []
@@ -443,6 +460,9 @@ async def update_movie(
     if is_watched is not None:
         params.append(is_watched)
         sets.append(f"is_watched = ${len(params)}")
+        if is_watched:
+            params.append(datetime.now())
+            sets.append(f"watched_at = COALESCE(watched_at, ${len(params)})")
     if rec_source is not None:
         params.append(rec_source)
         sets.append(f"rec_source = ${len(params)}")
@@ -452,6 +472,12 @@ async def update_movie(
     if in_library is not None:
         params.append(in_library)
         sets.append(f"in_library = ${len(params)}")
+    if user_rating is not None:
+        params.append(user_rating if user_rating > 0 else None)
+        sets.append(f"user_rating = ${len(params)}")
+    if user_note is not None:
+        params.append(user_note or None)
+        sets.append(f"user_note = ${len(params)}")
 
     if not sets:
         return await get_user_movie_by_id(movie_id, user_id)
@@ -524,6 +550,11 @@ def _row_to_book(row) -> Book:
         in_library=bool(row[13]) if row[13] is not None else True,
         added_at=row[14] if isinstance(row[14], datetime) else (
             datetime.fromisoformat(str(row[14])) if row[14] else datetime.now()
+        ),
+        user_rating=row[15],
+        user_note=row[16],
+        read_at=row[17] if (row[17] is None or isinstance(row[17], datetime)) else (
+            datetime.fromisoformat(str(row[17])) if row[17] else None
         ),
     )
 
@@ -622,12 +653,17 @@ async def update_book(
     rec_source: Optional[str] = None,
     rec_note: Optional[str] = None,
     in_library: Optional[bool] = None,
+    user_rating: Optional[float] = None,
+    user_note: Optional[str] = None,
 ) -> Optional[Book]:
     sets = []
     params: list = []
     if is_read is not None:
         params.append(is_read)
         sets.append(f"is_read = ${len(params)}")
+        if is_read:
+            params.append(datetime.now())
+            sets.append(f"read_at = COALESCE(read_at, ${len(params)})")
     if rec_source is not None:
         params.append(rec_source)
         sets.append(f"rec_source = ${len(params)}")
@@ -637,6 +673,12 @@ async def update_book(
     if in_library is not None:
         params.append(in_library)
         sets.append(f"in_library = ${len(params)}")
+    if user_rating is not None:
+        params.append(user_rating if user_rating > 0 else None)
+        sets.append(f"user_rating = ${len(params)}")
+    if user_note is not None:
+        params.append(user_note or None)
+        sets.append(f"user_note = ${len(params)}")
     if not sets:
         return await get_user_book_by_id(book_id, user_id)
 

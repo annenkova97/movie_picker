@@ -117,6 +117,11 @@ export function BooksScreen({ onBack }: Props) {
         onToggleRead={(b) =>
           books.patch.mutateAsync({ id: b.id, fields: { is_read: !b.is_read } }).finally(() => setSelected(null))}
         onRemove={(b) => books.remove.mutateAsync(b.id).finally(() => setSelected(null))}
+        onSaveDiary={(b, diary) =>
+          books.patch.mutateAsync({
+            id: b.id,
+            fields: { user_rating: diary.rating, user_note: diary.note },
+          }).then(() => undefined)}
       />
 
       <style>{styles}</style>
@@ -155,7 +160,11 @@ function BookRow({ book, lang, onClick }: { book: ApiBook; lang: 'ru' | 'en'; on
         <div className="bk-card__title">{book.title}</div>
         <div className="bk-card__meta">{[author, book.year || null].filter(Boolean).join(' · ')}</div>
       </div>
-      {book.is_read && <span className="bk-card__badge">✓</span>}
+      {book.user_rating ? (
+        <span className="bk-card__badge bk-card__badge--rating" title="моя оценка">★ {book.user_rating}</span>
+      ) : book.is_read ? (
+        <span className="bk-card__badge">✓</span>
+      ) : null}
     </button>
   );
 }
@@ -245,5 +254,8 @@ const styles = `
   flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
   background: var(--gold-tint-strong); color: var(--color-gold);
   display: inline-flex; align-items: center; justify-content: center; font-size: 12px;
+}
+.bk-card__badge--rating {
+  width: auto; padding: 0 8px; border-radius: 11px; font-weight: 700; white-space: nowrap;
 }
 `;

@@ -16,11 +16,16 @@ from backend.models import (
     User,
 )
 from backend.rate_limit import limiter, user_or_ip_key
-from backend.services import openlibrary_service, llm_service
+from backend.services import book_search, llm_service
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 
-_WORK_KEY_RE = re.compile(r"^OL\d+W$", re.IGNORECASE)
+# Распознаём явный ключ книги: Open Library (OL…W) или Google Books (gb:<id>).
+_OL_KEY_RE = re.compile(r"^OL\d+W$", re.IGNORECASE)
+
+
+def _is_work_key(query: str) -> bool:
+    return query.startswith("gb:") or bool(_OL_KEY_RE.match(query))
 
 
 # ----- static sub-paths (declared before /{book_id} so они не перехватываются) -----
@@ -32,15 +37,15 @@ async def search_books(
     request: Request,
     q: str = Query(..., min_length=1, description="Название или автор"),
 ):
-    """Поиск книг в Open Library. Публичный, без сохранения."""
-    return await openlibrary_service.search_books(q)
+    """Поиск книг (Google Books → Open Library). Публичный, без сохранения."""
+    return await book_search.search_books(q)
 
 
 @router.get("/preview/{work_key}", response_model=BookPreview)
 @limiter.limit("60/minute")
 async def get_book_preview(request: Request, work_key: str):
     """Детальный превью книги по work key — без сохранения в БД."""
-    book = await openlibrary_service.get_book_by_key(work_key)
+    book = await book_search.get_book_by_key(work_key)
     if not book:
         raise HTTPException(status_code=404, detail="Книга не найдена")
     return BookPreview(
@@ -113,7 +118,7 @@ async def bulk_import_books(
             imported.append(updated or existing)
             continue
 
-        book_base = await openlibrary_service.get_book_by_key(item.work_key)
+        book_base = await book_search.get_book_by_key(item.work_key)
         if not book_base:
             continue
 
@@ -136,7 +141,7 @@ async def add_book_by_key(work_key: str, current_user: User = Depends(get_curren
     existing = await db.get_user_book_by_work_key(work_key, current_user.id)
     if existing:
         return existing
-    book_base = await openlibrary_service.get_book_by_key(work_key)
+    book_base = await book_search.get_book_by_key(work_key)
     if not book_base:
         raise HTTPException(status_code=404, detail=f"Книга {work_key} не найдена")
     return await db.add_book(book_base, user_id=current_user.id, source="personal")
@@ -162,12 +167,12 @@ async def get_books(
 async def add_book(book_data: BookCreate, current_user: User = Depends(get_current_user)):
     """Добавить книгу по work key (OL…W) или свободному названию."""
     query = book_data.query.strip()
-    if _WORK_KEY_RE.match(query):
-        book_base = await openlibrary_service.get_book_by_key(query)
+    if _is_work_key(query):
+        book_base = await book_search.get_book_by_key(query)
     else:
-        results = await openlibrary_service.search_books(query)
+        results = await book_search.search_books(query)
         book_base = (
-            await openlibrary_service.get_book_by_key(results[0].work_key)
+            await book_search.get_book_by_key(results[0].work_key)
             if results else None
         )
 
@@ -209,7 +214,13 @@ async def update_book(
     book = await db.get_user_book_by_id(book_id, current_user.id)
     if not book:
         raise HTTPException(status_code=404, detail="Книга не найдена")
-    if update.is_read is None and update.rec_source is None and update.rec_note is None:
+    if (
+        update.is_read is None
+        and update.rec_source is None
+        and update.rec_note is None
+        and update.user_rating is None
+        and update.user_note is None
+    ):
         return book
     return await db.update_book(
         book_id,
@@ -217,6 +228,8 @@ async def update_book(
         is_read=update.is_read,
         rec_source=update.rec_source,
         rec_note=update.rec_note,
+        user_rating=update.user_rating,
+        user_note=update.user_note,
     )
 
 

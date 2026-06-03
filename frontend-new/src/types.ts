@@ -15,6 +15,9 @@ export interface ApiBook {
   rec_source?: string | null;
   rec_note?: string | null;
   in_library?: boolean;
+  user_rating?: number | null;
+  user_note?: string | null;
+  read_at?: string | null;
   added_at: string;
 }
 
@@ -54,6 +57,9 @@ export interface ApiMovie {
   in_library?: boolean;
   award?: string | null;
   award_year?: number | null;
+  user_rating?: number | null;
+  user_note?: string | null;
+  watched_at?: string | null;
   added_at: string;
 }
 
@@ -79,6 +85,8 @@ export interface UiMovie {
   inLibrary: boolean;
   award: string | null;
   awardYear: number | null;
+  userRating: number | null;
+  userNote: string | null;
   addedAt: string;
   savedDaysAgo: number;
 }
@@ -143,6 +151,8 @@ export function toUiMovie(m: ApiMovie): UiMovie {
     inLibrary: m.in_library ?? true,
     award: m.award ?? null,
     awardYear: m.award_year ?? null,
+    userRating: m.user_rating ?? null,
+    userNote: m.user_note ?? null,
     addedAt: m.added_at,
     savedDaysAgo: daysBetween(m.added_at),
   };

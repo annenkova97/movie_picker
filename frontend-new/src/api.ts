@@ -131,7 +131,15 @@ export function importFromTelegramParse(url: string): Promise<ParsedMovieBase[]>
   });
 }
 
-export function patchMovie(id: number, body: { is_watched?: boolean }): Promise<ApiMovie> {
+/** Diary fields shared by movie + book PATCH bodies. */
+export interface DiaryFields {
+  user_rating?: number | null;  // 1–5; 0 clears
+  user_note?: string | null;
+}
+
+export type MoviePatch = { is_watched?: boolean } & DiaryFields;
+
+export function patchMovie(id: number, body: MoviePatch): Promise<ApiMovie> {
   return http(`/api/movies/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
 
@@ -252,7 +260,9 @@ export function addBookByQuery(query: string): Promise<ApiBook> {
   return http('/api/books', { method: 'POST', body: JSON.stringify({ query }) });
 }
 
-export function patchBook(id: number, body: { is_read?: boolean }): Promise<ApiBook> {
+export type BookPatch = { is_read?: boolean } & DiaryFields;
+
+export function patchBook(id: number, body: BookPatch): Promise<ApiBook> {
   return http(`/api/books/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
 

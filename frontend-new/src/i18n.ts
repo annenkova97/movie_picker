@@ -151,6 +151,15 @@ export const T = {
   detailImdb:    { ru: 'На IMDb',                 en: 'On IMDb' } as Pair,
   detailNoPlot:  { ru: 'Описание пока не загружено', en: 'No description yet' } as Pair,
 
+  // Дневник: личная оценка + заметка.
+  diaryTitle:    { ru: 'Как тебе?',               en: 'How was it?' } as Pair,
+  diaryMyRating: { ru: 'Моя оценка',              en: 'My rating' } as Pair,
+  diaryNotePh:   { ru: 'Пара слов на память — чтобы не забыть',
+                   en: 'A few words to remember it by' } as Pair,
+  diarySave:     { ru: 'Сохранить',               en: 'Save' } as Pair,
+  diarySaved:    { ru: 'Сохранено ✓',             en: 'Saved ✓' } as Pair,
+  diaryNote:     { ru: 'Заметка',                 en: 'Note' } as Pair,
+
   authLoading:   { ru: 'Проверяем вход…',         en: 'Checking sign-in…' } as Pair,
   authTitleLogin:    { ru: 'Войти в Ленточку',     en: 'Sign in to Lentochka' } as Pair,
   authTitleRegister: { ru: 'Создать аккаунт',      en: 'Create an account' } as Pair,
@@ -233,8 +242,11 @@ export const T = {
   searchAria:     { ru: 'Поиск',                   en: 'Search' } as Pair,
   shareShort:     { ru: 'Поделиться',              en: 'Share' } as Pair,
   emptyHeroTitle: { ru: 'Здесь пока пусто',        en: 'Nothing here yet' } as Pair,
-  emptyHeroSub:   { ru: 'Сохраняй фильмы из соцсетей, от друзей — или начни с лучшего ниже ↓',
-                    en: 'Save films from social media or friends — or start with the best below ↓' } as Pair,
+  emptyHeroSub:   { ru: 'Сохраняй фильмы и книги — и возвращайся, когда захочешь что-то посмотреть или почитать.',
+                    en: 'Save films and books — and come back whenever you want something to watch or read.' } as Pair,
+  wlBooksEyebrow: { ru: 'Стоит почитать',          en: 'Worth reading' } as Pair,
+  wlBooksTitle:   { ru: 'Найди свою книгу',        en: 'Find your next book' } as Pair,
+  wlBooksOpenList:{ ru: 'Мой список для чтения →', en: 'My reading list →' } as Pair,
 
   // Lowercase rec-source captions on saved cards (distinct from the title-case source_* keys).
   recSrcInstagram: { ru: 'из Instagram',           en: 'from Instagram' } as Pair,
