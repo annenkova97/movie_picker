@@ -44,7 +44,9 @@ async def search_title(query: str) -> list[OMDBSearchResult]:
     cyrillic = has_cyrillic(query)
 
     if cyrillic and tmdb_service.enabled:
-        results = await tmdb_service.search(query)
+        # search_any = фильмы + сериалы: OMDB по кириллице не находит сериалы
+        # вовсе, так что для русских названий сериалов это единственный путь.
+        results = await tmdb_service.search_any(query)
         if results:
             return results
 

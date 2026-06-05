@@ -15,6 +15,7 @@ from backend.services.instagram_reader import (
 )
 from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
+from backend.services.movie_resolver import search_with_fallbacks
 from handlers.formatting import format_imdb_rating
 
 REEL_URL_RE = re.compile(
@@ -74,8 +75,15 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         found_any = False
+        seen_ids: set[str] = set()
         for item in movies_info:
-            results = await _search_omdb(item.title_en, item.title_ru)
+            # Общий резолвер: OMDB-movie → TMDb (фильмы+сериалы) → OMDB any →
+            # exact. require_poster=False — для бота важнее найти (без постера
+            # просто уйдём в текстовую карточку, см. ниже).
+            results = await search_with_fallbacks(
+                item.title_en or "", item.title_ru or "", seen_ids,
+                max_per_title=1, require_poster=False, log_tag="instagram-bot",
+            )
 
             if results:
                 found_any = True
@@ -208,24 +216,3 @@ def _format_film_caption(
     parts.append("")
     parts.append(source)
     return "\n".join(parts)
-
-
-async def _search_omdb(
-    title_en: str, title_ru: str,
-) -> list:
-    """Поиск в OMDB с фолбэком по нескольким стратегиям."""
-    for query in [title_en, title_ru]:
-        if not query:
-            continue
-        results = await omdb_service.search_movies(query)
-        if results:
-            return results
-
-    for query in [title_en, title_ru]:
-        if not query:
-            continue
-        results = await omdb_service.search_movies(query, media_type="")
-        if results:
-            return results
-
-    return []

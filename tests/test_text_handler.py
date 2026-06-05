@@ -46,7 +46,7 @@ async def test_search_title_prefers_tmdb_for_cyrillic_when_enabled():
     translate_mock = AsyncMock()
 
     with patch("backend.services.title_search.tmdb_service.api_key", new="dummy"), \
-         patch("backend.services.title_search.tmdb_service.search", new=tmdb_mock), \
+         patch("backend.services.title_search.tmdb_service.search_any", new=tmdb_mock), \
          patch("backend.services.title_search.omdb_service.search_movies", new=omdb_mock), \
          patch("backend.services.title_search.llm_service.translate_movie_title", new=translate_mock):
         results = await search_title("Бойцовский клуб")
@@ -113,7 +113,7 @@ async def test_search_title_tmdb_empty_falls_through_to_omdb():
     translate_mock = AsyncMock(return_value="Some Movie")
 
     with patch("backend.services.title_search.tmdb_service.api_key", new="dummy"), \
-         patch("backend.services.title_search.tmdb_service.search", new=tmdb_mock), \
+         patch("backend.services.title_search.tmdb_service.search_any", new=tmdb_mock), \
          patch("backend.services.title_search.omdb_service.search_movies", new=omdb_mock), \
          patch("backend.services.title_search.llm_service.translate_movie_title", new=translate_mock):
         results = await search_title("Какой-то редкий фильм")
@@ -161,7 +161,7 @@ async def test_find_by_query_falls_through_to_search_for_cyrillic():
     with patch("backend.services.title_search.omdb_service.get_movie_by_title", new=by_title), \
          patch("backend.services.title_search.omdb_service.get_movie_by_id", new=get_by_id), \
          patch("backend.services.title_search.tmdb_service.api_key", new="dummy"), \
-         patch("backend.services.title_search.tmdb_service.search", new=tmdb_mock):
+         patch("backend.services.title_search.tmdb_service.search_any", new=tmdb_mock):
         result = await find_movie_by_query("Бойцовский клуб")
 
     assert result == "FULL_OMDB"
