@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes
 from backend import database as db
 from backend.services.llm import llm_service
 from backend.services.title_search import search_title
+from handlers.formatting import imdb_suffix
 from handlers.search import send_search_results
 
 
@@ -83,7 +84,7 @@ async def _do_recommend(update: Update, query: str):
     text = f"Под «{query}»:\n\n"
 
     for i, movie in enumerate(recommended, 1):
-        rating = f"  ★ {movie.imdb_rating}" if movie.imdb_rating else ""
+        rating = imdb_suffix(movie.imdb_rating, "  ★ ")
         year = f" ({movie.year})" if movie.year else ""
         genres = f" — {', '.join(movie.genres)}" if movie.genres else ""
         text += f"{i}. *{movie.title}*{year}{rating}{genres}\n"

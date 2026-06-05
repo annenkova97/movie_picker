@@ -3,12 +3,13 @@ from telegram.ext import ContextTypes
 
 from backend import database as db
 from handlers.callbacks import _get_or_create_user
+from handlers.formatting import imdb_suffix
 
 
 def _format_movie(movie) -> str:
     """Форматирование фильма для сообщения"""
     watched = "✅" if movie.is_watched else "🎬"
-    rating = f" | IMDb {movie.imdb_rating}" if movie.imdb_rating else ""
+    rating = imdb_suffix(movie.imdb_rating, " | IMDb ")
     year = f" ({movie.year})" if movie.year else ""
     genres = f"\n{', '.join(movie.genres)}" if movie.genres else ""
     desc = f"\n_{movie.description}_" if movie.description else ""

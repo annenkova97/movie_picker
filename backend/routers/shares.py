@@ -62,7 +62,11 @@ def _normalise_name(raw: str) -> str:
 
 
 def _movies_to_snapshot(movies: list[Movie]) -> str:
-    return json.dumps([m.model_dump(mode="json") for m in movies])
+    # ``user_note`` — личная заметка из дневника; в публичный шэр её не пускаем.
+    # ``user_rating`` оставляем: курируемый список «мои 5★» — это и есть фича.
+    return json.dumps(
+        [m.model_dump(mode="json", exclude={"user_note"}) for m in movies]
+    )
 
 
 def _snapshot_to_movies(snapshot: str) -> list[Movie]:

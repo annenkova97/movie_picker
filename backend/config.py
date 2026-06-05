@@ -14,6 +14,14 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 # is omitted, and users open the Mini-App via BotFather's menu button.
 MINI_APP_URL = os.getenv("MINI_APP_URL", "").strip()
 
+# Public base URL of THIS service (e.g. https://lentochka.up.railway.app).
+# When set together with TELEGRAM_BOT_TOKEN, the app runs the bot via webhook
+# inside the web process (no separate worker). Local dev leaves it unset and
+# runs the bot via `python bot.py` (long-polling) instead.
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+# Secret path segment for the webhook so randoms can't POST fake updates.
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip()
+
 JWT_SECRET = os.getenv("JWT_SECRET", "")
 if not JWT_SECRET:
     raise RuntimeError(
@@ -46,6 +54,12 @@ OMDB_BASE_URL = "http://www.omdbapi.com/"
 # Если не задан — пайплайн откатывается на OMDB + LLM-перевод названия.
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 TMDB_BASE_URL = "https://api.themoviedb.org/3"
+
+# Google Books — основной поисковик книг (Open Library плохо знает русский).
+# Ключ опционален: без него работает анонимная квота. Берётся в Google Cloud
+# Console → APIs & Services → Credentials.
+GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
+GOOGLE_BOOKS_BASE_URL = "https://www.googleapis.com/books/v1/volumes"
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 INSTAGRAM_VIDEO_DIR = os.getenv(

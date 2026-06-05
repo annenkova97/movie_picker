@@ -1,31 +1,18 @@
 """
-Movie Picker — Telegram Bot
+Movie Picker — Telegram Bot (локальная разработка, long-polling)
 Запуск: python bot.py
-"""
 
-import asyncio
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    filters,
-)
+Прод использует webhook (см. backend.main lifespan). Регистрация хендлеров —
+общая, в bot_setup.register_handlers, чтобы оба транспорта не разъезжались.
+"""
 
 from backend.config import TELEGRAM_BOT_TOKEN
 from backend.database import init_db
-from handlers.start import start_command, help_command
-from handlers.search import search_command
-from handlers.add import add_command
-from handlers.list import list_command, watched_command
-from handlers.recommend import recommend_command, text_handler
-from handlers.callbacks import callback_handler
-from handlers.instagram import instagram_handler
-from handlers.forward import forward_handler
+from bot_setup import build_application
 
 
 async def post_init(application):
-    """Инициализация БД при старте бота"""
+    """Инициализация БД при старте бота."""
     await init_db()
     print("База данных инициализирована.")
 
@@ -36,39 +23,7 @@ def main():
         print("Получите токен у @BotFather в Telegram")
         return
 
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
-
-    # Команды
-    app.add_handler(CommandHandler("start", start_command))
-    app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("search", search_command))
-    app.add_handler(CommandHandler("add", add_command))
-    app.add_handler(CommandHandler("list", list_command))
-    app.add_handler(CommandHandler("watched", watched_command))
-    app.add_handler(CommandHandler("recommend", recommend_command))
-
-    # Callback-кнопки (add, watch, unwatch, delete)
-    app.add_handler(CallbackQueryHandler(callback_handler))
-
-    # Instagram Reels → извлечение фильмов
-    # (ловим раньше FORWARDED — пересланный Reel тоже сюда)
-    app.add_handler(MessageHandler(
-        filters.Regex(r"https?://(www\.)?instagram\.com/(reel|reels)/"),
-        instagram_handler,
-    ))
-
-    # Пересланные посты из TG-каналов: текст или фото → ищем фильмы
-    app.add_handler(MessageHandler(
-        filters.FORWARDED & (filters.TEXT | filters.PHOTO | filters.CAPTION),
-        forward_handler,
-    ))
-
-    # Свободный текст → сначала поиск по OMDB, потом подбор из библиотеки.
-    # Пересланные сообщения уже отработаны выше — исключаем их фильтром.
-    app.add_handler(MessageHandler(
-        filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED,
-        text_handler,
-    ))
+    app = build_application(post_init=post_init)
 
     print("Бот запущен! Нажми Ctrl+C для остановки.")
     app.run_polling(drop_pending_updates=True)

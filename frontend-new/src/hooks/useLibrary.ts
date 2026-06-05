@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth';
 import { getLibrary } from '../library';
 import type { ApiMovie } from '../types';
+import type { MoviePatch } from '../api';
 
 const GUEST_SIGNUP_SHOWN_KEY = 'lentochka.guestSignupShown';
 
@@ -48,7 +49,7 @@ export function useLibrary() {
   });
 
   const patch = useMutation({
-    mutationFn: ({ id, fields }: { id: number; fields: { is_watched?: boolean } }) =>
+    mutationFn: ({ id, fields }: { id: number; fields: MoviePatch }) =>
       lib.patch(id, fields),
     onSuccess: invalidate,
   });

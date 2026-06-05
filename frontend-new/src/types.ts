@@ -1,5 +1,40 @@
 export type RecSource = 'telegram' | 'instagram' | 'friends' | 'personal';
 
+export interface ApiBook {
+  id: number;
+  work_key: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  subjects: string[];
+  description: string | null;
+  cover_url: string | null;
+  rating: number | null;
+  is_read: boolean;
+  source: string;
+  rec_source?: string | null;
+  rec_note?: string | null;
+  in_library?: boolean;
+  user_rating?: number | null;
+  user_note?: string | null;
+  read_at?: string | null;
+  added_at: string;
+}
+
+/** Hue derived from the work key for gradient fallback covers. */
+export function bookHue(b: ApiBook): number {
+  const base = b.work_key || String(b.id);
+  let h = 0;
+  for (let i = 0; i < base.length; i++) h = (h * 31 + base.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+export function cleanBookCover(url: string | null): string | null {
+  if (!url) return null;
+  const t = url.trim();
+  return t && t !== 'N/A' ? t : null;
+}
+
 export interface ApiMovie {
   id: number;
   imdb_id: string;
@@ -22,6 +57,9 @@ export interface ApiMovie {
   in_library?: boolean;
   award?: string | null;
   award_year?: number | null;
+  user_rating?: number | null;
+  user_note?: string | null;
+  watched_at?: string | null;
   added_at: string;
 }
 
@@ -47,6 +85,8 @@ export interface UiMovie {
   inLibrary: boolean;
   award: string | null;
   awardYear: number | null;
+  userRating: number | null;
+  userNote: string | null;
   addedAt: string;
   savedDaysAgo: number;
 }
@@ -111,6 +151,8 @@ export function toUiMovie(m: ApiMovie): UiMovie {
     inLibrary: m.in_library ?? true,
     award: m.award ?? null,
     awardYear: m.award_year ?? null,
+    userRating: m.user_rating ?? null,
+    userNote: m.user_note ?? null,
     addedAt: m.added_at,
     savedDaysAgo: daysBetween(m.added_at),
   };

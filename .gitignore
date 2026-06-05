@@ -1,8 +1,18 @@
-# Environment
+# Environment / secrets
 .env
+.env.save
+.env.local
+.env.*.local
 venv/
 __pycache__/
 *.pyc
+
+# Local databases (dev SQLite — never commit; prod uses Postgres via DATABASE_URL).
+# NOTE: backend/data/movies.db is already tracked — untrack it once with:
+#   git rm --cached backend/data/movies.db
+backend/data/*.db
+backend/data/*.db-wal
+backend/data/*.db-shm
 
 # IDE
 .idea/

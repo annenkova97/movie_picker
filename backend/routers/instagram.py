@@ -18,7 +18,7 @@ from backend.services.instagram_reader import (
 )
 from backend.services.movie_resolver import (
     resolve_movies,
-    search_omdb_with_fallbacks,
+    search_with_fallbacks,
 )
 
 
@@ -187,7 +187,7 @@ async def search_from_instagram(
             title_en = item.title_en or ""
             title_ru = item.title_ru or ""
             print(f"[instagram/search] searching for: en='{title_en}' ru='{title_ru}'")
-            found = await search_omdb_with_fallbacks(
+            found = await search_with_fallbacks(
                 title_en, title_ru, seen_ids, log_tag="instagram/search",
             )
             print(f"[instagram/search]   → found {len(found)} results")

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listAwards } from './api';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './auth';
 import { useGuestSignupPrompt, useLibrary } from './hooks/useLibrary';
 import { migrateGuestLibrary } from './library';
+import { migrateGuestBooks } from './bookLibrary';
 import { AuthScreen } from './components/AuthScreen';
 import { GuestSignupSheet } from './components/GuestSignupSheet';
 import { ShareModal } from './components/ShareModal';
@@ -13,18 +13,11 @@ import { TonightResults, SAMPLE_FILMS } from './components/tonight/TonightResult
 import { WatchlistMain, SAMPLE_SAVED, SAMPLE_RECS } from './components/watchlist/WatchlistMain';
 import { WatchlistEmpty } from './components/watchlist/WatchlistEmpty';
 import { LentochkaApp } from './LentochkaApp';
+import { SettingsProvider, useSettings } from './settings';
 import type { Lang } from './i18n';
 import { T } from './i18n';
-import { THEMES, type Theme, type ThemeName } from './theme';
+import { THEMES, type Theme } from './theme';
 import { toUiMovie, type UiMovie } from './types';
-
-function usePersistent<T extends string>(key: string, fallback: T): [T, (v: T) => void] {
-  const [v, setV] = useState<T>(() => {
-    try { return (localStorage.getItem(key) as T) || fallback; } catch { return fallback; }
-  });
-  useEffect(() => { try { localStorage.setItem(key, v); } catch {} }, [key, v]);
-  return [v, setV];
-}
 
 function readShareSlug(): string | null {
   // No router yet — keep it dead simple. Path /s/<slug> renders the share view.
@@ -40,9 +33,17 @@ function readDebugScreen(): string | null {
 }
 
 export default function App() {
-  const [lang, setLang] = usePersistent<Lang>('lentochka.lang', 'en');
-  const [themeName, setThemeName] = usePersistent<ThemeName>('lentochka.theme', 'light');
-  const th = THEMES[themeName];
+  return (
+    <SettingsProvider>
+      <AppShell />
+    </SettingsProvider>
+  );
+}
+
+function AppShell() {
+  const { lang } = useSettings();
+  // App is dark-only now; legacy modal components still take a theme object.
+  const th = THEMES.dark;
   const auth = useAuth();
   const shareSlug = readShareSlug();
 
@@ -91,7 +92,10 @@ export default function App() {
         films={SAMPLE_SAVED}
         recommendations={SAMPLE_RECS}
         onOpenTonight={() => console.log('[watchlist:open-tonight]')}
-        onOpenSettings={() => console.log('[watchlist:open-settings]')}
+        onOpenAuth={() => console.log('[watchlist:open-auth]')}
+        onShare={() => console.log('[watchlist:share]')}
+        onOpenSearch={() => console.log('[watchlist:open-search]')}
+        onOpenBooks={() => console.log('[watchlist:open-books]')}
         onSelectFilm={(f) => console.log('[watchlist:select-film]', f.title)}
         onSelectRec={(f) => console.log('[watchlist:select-rec]', f.title)}
         onSeeAllAwards={() => console.log('[watchlist:see-all]')}
@@ -103,7 +107,10 @@ export default function App() {
       <WatchlistEmpty
         userName="Настя"
         curated={SAMPLE_RECS}
-        onOpenSettings={() => console.log('[empty:open-settings]')}
+        bookCount={0}
+        onOpenAuth={() => console.log('[empty:open-auth]')}
+        onOpenSearch={() => console.log('[empty:open-search]')}
+        onOpenBooks={() => console.log('[empty:open-books]')}
         onSave={(f) => console.log('[empty:save]', f.title)}
         onSelectFilm={(f) => console.log('[empty:select]', f.title)}
       />
@@ -136,12 +143,14 @@ function AppInner({ th, lang }: AppInnerProps) {
         if (count > 0) qc.invalidateQueries({ queryKey: ['library'] });
       })
       .catch((err) => console.warn('[migrate] guest library migration failed:', err));
+    migrateGuestBooks()
+      .then((count) => {
+        if (cancelled) return;
+        if (count > 0) qc.invalidateQueries({ queryKey: ['books'] });
+      })
+      .catch((err) => console.warn('[migrate] guest books migration failed:', err));
     return () => { cancelled = true; };
   }, [auth.user?.id, qc]);
-
-  // Awards query kept warm — the curated catalog will plug into it once the
-  // backend exposes per-award filtering. For now Empty State uses sample data.
-  useQuery({ queryKey: ['awards'], queryFn: () => listAwards() });
 
   const moviesQuery = lib.list;
   const uiMovies = useMemo<UiMovie[]>(
@@ -157,7 +166,7 @@ function AppInner({ th, lang }: AppInnerProps) {
     <>
       <LentochkaApp
         onOpenAuth={() => setAuthMode('login')}
-        onOpenSettings={() => setShareOpen(true)}
+        onOpenShare={() => setShareOpen(true)}
       />
 
       {guestPrompt.open && (

@@ -11,6 +11,7 @@
  */
 
 import type { ApiMovie } from './types';
+import type { MoviePatch } from './api';
 import {
   addMovie as apiAddMovie,
   addMovieByImdbId,
@@ -159,7 +160,7 @@ export interface MovieLibrary {
    * fuzzy OMDB lookup); LocalLibrary searches OMDB and saves the first hit.
    */
   addByQuery(query: string): Promise<ApiMovie>;
-  patch(id: number, fields: { is_watched?: boolean }): Promise<ApiMovie>;
+  patch(id: number, fields: MoviePatch): Promise<ApiMovie>;
   remove(id: number): Promise<void>;
   importFromInstagram(url: string): Promise<ApiMovie[]>;
   importFromTelegram(url: string): Promise<ApiMovie[]>;
@@ -197,7 +198,7 @@ class BackendLibrary implements MovieLibrary {
     return apiAddMovie(query);
   }
 
-  patch(id: number, fields: { is_watched?: boolean }) {
+  patch(id: number, fields: MoviePatch) {
     return apiPatchMovie(id, fields);
   }
 
@@ -299,11 +300,18 @@ class LocalLibrary implements MovieLibrary {
     return record;
   }
 
-  async patch(id: number, fields: { is_watched?: boolean }): Promise<ApiMovie> {
+  async patch(id: number, fields: MoviePatch): Promise<ApiMovie> {
     const all = readLocal();
     const movie = all.find((m) => m.id === id);
     if (!movie) throw new Error('Movie not found in local library');
-    if (fields.is_watched !== undefined) movie.is_watched = fields.is_watched;
+    if (fields.is_watched !== undefined) {
+      movie.is_watched = fields.is_watched;
+      if (fields.is_watched && !movie.watched_at) movie.watched_at = nowIso();
+    }
+    if (fields.user_rating !== undefined) {
+      movie.user_rating = fields.user_rating && fields.user_rating > 0 ? fields.user_rating : null;
+    }
+    if (fields.user_note !== undefined) movie.user_note = fields.user_note || null;
     writeLocal(all);
     return movie;
   }

@@ -1,4 +1,4 @@
-import type { ApiMovie } from './types';
+import type { ApiMovie, ApiBook } from './types';
 import { getToken, handleUnauthorized } from './auth';
 
 async function http<T>(url: string, init?: RequestInit): Promise<T> {
@@ -131,7 +131,15 @@ export function importFromTelegramParse(url: string): Promise<ParsedMovieBase[]>
   });
 }
 
-export function patchMovie(id: number, body: { is_watched?: boolean }): Promise<ApiMovie> {
+/** Diary fields shared by movie + book PATCH bodies. */
+export interface DiaryFields {
+  user_rating?: number | null;  // 1–5; 0 clears
+  user_note?: string | null;
+}
+
+export type MoviePatch = { is_watched?: boolean } & DiaryFields;
+
+export function patchMovie(id: number, body: MoviePatch): Promise<ApiMovie> {
   return http(`/api/movies/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 }
 
@@ -209,4 +217,90 @@ export function createShare(name: string, library?: ApiMovie[]): Promise<SharedL
 
 export function getShare(slug: string): Promise<SharedListPayload> {
   return http(`/api/shares/${encodeURIComponent(slug)}`);
+}
+
+// ── Books ──────────────────────────────────────────────────────────────────
+
+export interface BookSearchResult {
+  work_key: string;
+  title: string;
+  author: string | null;
+  year: string | null;
+  cover_url: string | null;
+}
+
+export interface BookPreview {
+  work_key: string;
+  title: string;
+  authors: string[];
+  year: number | null;
+  subjects: string[];
+  description: string | null;
+  cover_url: string | null;
+  rating: number | null;
+}
+
+export function listBooks(): Promise<ApiBook[]> {
+  return http('/api/books');
+}
+
+export function searchBooks(q: string): Promise<BookSearchResult[]> {
+  return http(`/api/books/search?q=${encodeURIComponent(q)}`);
+}
+
+export function getBookPreview(workKey: string): Promise<BookPreview> {
+  return http(`/api/books/preview/${encodeURIComponent(workKey)}`);
+}
+
+export function addBookByKey(workKey: string): Promise<ApiBook> {
+  return http(`/api/books/by-key/${encodeURIComponent(workKey)}`, { method: 'POST' });
+}
+
+export function addBookByQuery(query: string): Promise<ApiBook> {
+  return http('/api/books', { method: 'POST', body: JSON.stringify({ query }) });
+}
+
+export type BookPatch = { is_read?: boolean } & DiaryFields;
+
+export function patchBook(id: number, body: BookPatch): Promise<ApiBook> {
+  return http(`/api/books/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+export function deleteBook(id: number): Promise<void> {
+  return http(`/api/books/${id}`, { method: 'DELETE' });
+}
+
+export interface BookBulkImportItem {
+  work_key: string;
+  is_read: boolean;
+  rec_source: string | null;
+  rec_note: string | null;
+  source: string;
+}
+
+export function bulkImportBooks(items: BookBulkImportItem[]): Promise<ApiBook[]> {
+  return http('/api/books/bulk-import', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+  });
+}
+
+export interface BookRecommendResult {
+  books: ApiBook[];
+  explanation: string;
+}
+
+export function recommendBooks(
+  query: string,
+  includeRead = false,
+  library?: ApiBook[],
+): Promise<BookRecommendResult> {
+  return http('/api/books/recommend', {
+    method: 'POST',
+    body: JSON.stringify({
+      query,
+      include_read: includeRead,
+      ...(library !== undefined ? { library } : {}),
+    }),
+  });
 }

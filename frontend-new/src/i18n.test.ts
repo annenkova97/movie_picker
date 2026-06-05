@@ -43,4 +43,43 @@ describe('i18n', () => {
       expect(T[k]?.en, `T.${k}.en`).toBeTruthy();
     }
   });
+
+  it('wine-deep home + settings keys exist in both locales', () => {
+    const requiredKeys = [
+      'greetingBack', 'friend', 'wlTitle',
+      'wlFilterAll', 'wlFilterMovies', 'wlFilterSeries', 'wlFilterBooks',
+      'wlRecent', 'wlSortByDate', 'wlRecsEyebrow', 'wlRecsTitle', 'wlSeeAll',
+      'wlBooksEyebrow', 'wlBooksTitle', 'wlBooksOpenList',
+      'tonightEyebrow', 'tonightTitle', 'tonightSubtitle',
+      'settingsAria', 'searchAria', 'emptyHeroTitle', 'emptyHeroSub',
+      'recSrcInstagram', 'recSrcTelegram', 'recSrcFriends', 'recSrcPersonal',
+      'settingsTitle', 'settingsLanguage', 'settingsTheme',
+      'settingsThemeLight', 'settingsThemeDark', 'settingsAccount',
+      'settingsShareList', 'settingsGuest', 'settingsClose',
+    ] as const;
+    for (const k of requiredKeys) {
+      expect(T[k]?.ru, `T.${k}.ru`).toBeTruthy();
+      expect(T[k]?.en, `T.${k}.en`).toBeTruthy();
+    }
+  });
+
+  it('books keys exist in both locales', () => {
+    const requiredKeys = [
+      'booksTitle', 'booksSubtitle', 'booksWantToRead', 'booksRead',
+      'booksEmptyTitle', 'booksEmptySub', 'booksFindCta',
+      'bookSearchTitle', 'bookSearchSub', 'bookSearchPh',
+      'bookAddWant', 'bookAddRead', 'bookMarkRead', 'bookBackToList',
+      'bookSubjects', 'bookAuthorless', 'pickBookCta', 'pickBookPh', 'pickBookGo',
+      'back', 'searchTitle', 'searchSubtitle',
+    ] as const;
+    for (const k of requiredKeys) {
+      expect(T[k]?.ru, `T.${k}.ru`).toBeTruthy();
+      expect(T[k]?.en, `T.${k}.en`).toBeTruthy();
+    }
+  });
+
+  it('greetingBack carries the %s name placeholder in both locales', () => {
+    expect(T.greetingBack.ru).toContain('%s');
+    expect(T.greetingBack.en).toContain('%s');
+  });
 });

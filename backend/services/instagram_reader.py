@@ -42,6 +42,11 @@ REEL_URL_PATTERN = re.compile(
     r"https?://(www\.)?instagram\.com/(reel|reels)/[\w-]+/?",
 )
 
+# Общий instagram-scraper — фолбэк, когда reel-specific actor не открывает рилс.
+# Отдаёт caption (без готового transcript), читает часть «приватных» для
+# reel-scraper'а ссылок.
+APIFY_GENERAL_ACTOR = "apify~instagram-scraper"
+
 APIFY_RUN_ENDPOINT = "https://api.apify.com/v2/acts/{actor}/runs"
 APIFY_RUN_STATUS_ENDPOINT = "https://api.apify.com/v2/actor-runs/{run_id}"
 APIFY_DATASET_ENDPOINT = "https://api.apify.com/v2/datasets/{dataset_id}/items"
@@ -128,32 +133,25 @@ def _shortcode_from_url(url: str) -> str:
     return hashlib.sha1(url.encode("utf-8")).hexdigest()[:11]
 
 
-def _call_apify_instagram(url: str) -> dict:
-    """Запускает apify/instagram-reel-scraper и возвращает первый результат.
+def _run_apify_actor(actor: str, payload: dict, *, label: str = "apify") -> dict:
+    """Запускает любой Apify-actor и возвращает первый элемент его dataset'а.
 
     Используем async flow вместо ``run-sync-get-dataset-items``:
     он держит TCP-соединение всё время работы actor'а (30-40 секунд) и
     регулярно обрывается на стороне Apify ``Server disconnected``.
     Поэтому: стартуем run, дёргаем статус каждые 3 секунды, потом
     читаем dataset. Каждый HTTP-вызов короткий и идемпотентный.
+
+    Бросает ``InstagramReaderError`` на любой инфраструктурный сбой или если
+    dataset пуст. Распознавание «actor отработал, но данных по ссылке нет»
+    (error-запись в dataset'е) — на совести вызывающего, см. ``_is_error_item``.
     """
     _ensure_apify_token()
-
-    payload = {
-        # У этого актора поле называется "username", но принимает и URL-ы рилзов.
-        "username": [url],
-        "resultsLimit": 1,
-        # Apify сам прогонит аудио через свой транскрайбер — Whisper не нужен.
-        "includeTranscript": True,
-        # Видео сохранится в KeyValueStore этого run'а; ссылка прилетит в поле
-        # downloadedVideo, доступна по нашему APIFY_TOKEN (Instagram CDN мимо).
-        "includeDownloadedVideo": True,
-    }
 
     # 1. Стартуем run
     try:
         start_resp = httpx.post(
-            APIFY_RUN_ENDPOINT.format(actor=APIFY_INSTAGRAM_ACTOR),
+            APIFY_RUN_ENDPOINT.format(actor=actor),
             params={"token": APIFY_TOKEN},
             json=payload,
             timeout=30.0,
@@ -195,7 +193,7 @@ def _call_apify_instagram(url: str) -> dict:
 
     if final_status != "SUCCEEDED":
         raise InstagramReaderError(
-            f"Apify run finished with status: {final_status or 'timeout'}"
+            f"Apify run ({label}) finished with status: {final_status or 'timeout'}"
         )
 
     # 3. Читаем dataset (короткий запрос, без длинных hold-alive)
@@ -224,6 +222,73 @@ def _call_apify_instagram(url: str) -> dict:
         )
 
     return items[0]
+
+
+def _is_error_item(item: dict) -> bool:
+    """True, если actor вернул error-запись вместо данных.
+
+    instagram-reel-scraper для недоступных рилзов кладёт в dataset
+    ``{"error": "no_items", "errorDescription": "Empty or private data ..."}``.
+    Раньше это молча принималось за «пустой пост» → бот говорил «не нашла
+    фильмов», хотя на деле рилс просто не открылся.
+    """
+    return (
+        isinstance(item, dict)
+        and bool(item.get("error"))
+        and not (item.get("caption") or item.get("transcript"))
+    )
+
+
+def _call_apify_reel(url: str) -> dict:
+    """Основной актор: instagram-reel-scraper (caption + готовый transcript +
+    видео в своём KVS). Бросает ``InstagramReaderError``, если рилс недоступен —
+    тогда вызывающий откатится на общий скрапер."""
+    item = _run_apify_actor(
+        APIFY_INSTAGRAM_ACTOR,
+        {
+            # У этого актора поле называется "username", но принимает и URL-ы рилзов.
+            "username": [url],
+            "resultsLimit": 1,
+            # Apify сам прогонит аудио через свой транскрайбер — Whisper не нужен.
+            "includeTranscript": True,
+            # Видео сохранится в KeyValueStore этого run'а; ссылка прилетит в поле
+            # downloadedVideo, доступна по нашему APIFY_TOKEN (Instagram CDN мимо).
+            "includeDownloadedVideo": True,
+        },
+        label="reel-scraper",
+    )
+    if _is_error_item(item):
+        detail = item.get("errorDescription") or item.get("error")
+        raise InstagramReaderError(f"reel-scraper не отдал данные: {detail}")
+    return item
+
+
+def _caption_via_general_scraper(url: str) -> str:
+    """Фолбэк: общий apify/instagram-scraper. Достаёт caption там, где
+    reel-scraper спотыкается (часть рилзов он отдаёт как «Empty or private»).
+
+    Готового transcript у него нет — только подпись, но для рилзов-рекомендаций
+    название обычно в подписи. Возвращает '' на любую ошибку: фолбэк не должен
+    ронять весь разбор, дальше ``download_reel`` отдаст честную ошибку.
+    """
+    try:
+        item = _run_apify_actor(
+            APIFY_GENERAL_ACTOR,
+            {
+                "directUrls": [url],
+                "resultsType": "posts",
+                "resultsLimit": 1,
+                "addParentData": False,
+            },
+            label="instagram-scraper",
+        )
+    except InstagramReaderError as exc:
+        print(f"[instagram_reader] general scraper failed: {exc}")
+        return ""
+
+    if _is_error_item(item):
+        return ""
+    return item.get("caption") or ""
 
 
 def _download_video(video_url: str, dest_path: Path) -> None:
@@ -301,23 +366,49 @@ def download_reel(url: str) -> tuple[str | None, str, str]:
       поэтому работает и с датацентровых IP типа Railway.
       Если по какой-то причине KVS не отдал — возвращаем ``None``,
       transcript+caption всё равно достаточно для extract_movies.
+
+    Двухступенчатая стратегия: основной reel-scraper, а если он не открыл рилс
+    (часть ссылок он отдаёт как «Empty or private data»), откатываемся на общий
+    instagram-scraper ради caption. Если оба пустые — бросаем понятную ошибку,
+    а не делаем вид, что в посте просто нет фильмов.
     """
-    item = _call_apify_instagram(url)
+    _ensure_apify_token()
 
-    caption = item.get("caption") or ""
-    transcript = item.get("transcript") or ""
-
-    short = item.get("shortCode") or _shortcode_from_url(url)
-    apify_video_url = item.get("downloadedVideo")
+    caption = ""
+    transcript = ""
     video_path: str | None = None
 
-    if apify_video_url:
-        dest = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
-        try:
-            _download_from_apify_kvs(apify_video_url, dest)
-            video_path = str(dest)
-        except InstagramReaderError as exc:
-            print(f"[instagram_reader] Apify KVS download failed: {exc}")
+    # 1. Основной актор: caption + transcript + видео в KVS.
+    try:
+        item = _call_apify_reel(url)
+    except InstagramReaderError as exc:
+        print(f"[instagram_reader] reel-scraper unavailable, falling back: {exc}")
+        item = None
+
+    if item is not None:
+        caption = item.get("caption") or ""
+        transcript = item.get("transcript") or ""
+
+        apify_video_url = item.get("downloadedVideo")
+        if apify_video_url:
+            short = item.get("shortCode") or _shortcode_from_url(url)
+            dest = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
+            try:
+                _download_from_apify_kvs(apify_video_url, dest)
+                video_path = str(dest)
+            except InstagramReaderError as exc:
+                print(f"[instagram_reader] Apify KVS download failed: {exc}")
+
+    # 2. Фолбэк: общий скрапер за caption, если основной не дал ни текста.
+    if not caption.strip() and not transcript.strip():
+        caption = _caption_via_general_scraper(url)
+
+    # 3. Совсем пусто — честно говорим, что рилс не открылся.
+    if not caption.strip() and not transcript.strip():
+        raise InstagramReaderError(
+            "Не удалось открыть этот Reel — возможно, он приватный или "
+            "недоступен. Попробуй другую ссылку."
+        )
 
     return video_path, caption, transcript
 

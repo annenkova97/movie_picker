@@ -37,6 +37,14 @@
   --wine-light-border: rgba(90, 55, 96, 0.40);   /* default border */
   --wine-light-divider: rgba(90, 55, 96, 0.45);  /* divider lines */
 
+  /* ----- Muted cream text steps (so components can invert in light mode) ----- */
+  --cream-92: rgba(233, 217, 167, 0.92);
+  --cream-85: rgba(233, 217, 167, 0.85);
+  --cream-70: rgba(233, 217, 167, 0.70);
+  --cream-60: rgba(233, 217, 167, 0.60);
+  --cream-55: rgba(233, 217, 167, 0.55);
+  --cream-50: rgba(233, 217, 167, 0.50);
+
   /* ----- Typography: Family ----- */
   --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
@@ -113,19 +121,6 @@
   --frame-mobile-h: 844px;
   --content-edge-padding: 20px;  /* horizontal page padding */
   --content-content-w: 350px;     /* 390 - 2 * 20 */
-}
-
-/* ============================================================
-   Light mode (web landing) — invert
-   ============================================================ */
-
-[data-theme="light"] {
-  --color-wine-deep: #FAF6EE;   /* cream as bg */
-  --color-wine: #F5E6B8;        /* slightly darker cream as surface */
-  --color-wine-light: #E5C9A0;  /* warm beige border */
-  --color-cream: #2A1830;       /* wine deep as text */
-  --color-cream-soft: #5A3760;  /* wine light as secondary */
-  /* gold stays the same */
 }
 
 /* ============================================================

@@ -73,9 +73,202 @@ input::placeholder {
 .wl-greeting {
   font-family: var(--font-body);
   font-size: 14px;
-  color: rgba(233, 217, 167, 0.7);
+  color: var(--cream-70);
   margin-bottom: 4px;
 }
+
+/* Header action cluster: language toggle + search + settings gear. */
+.wl-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex: 0 0 auto;
+}
+
+.wl-lang {
+  display: inline-flex;
+  background: var(--color-wine);
+  border: 1px solid var(--wine-light-border);
+  border-radius: 999px;
+  padding: 2px;
+}
+.wl-lang__btn {
+  border: none;
+  background: transparent;
+  color: var(--cream-60);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  padding: 5px 9px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.wl-lang__btn.is-active {
+  background: var(--gold-tint-strong);
+  color: var(--color-cream);
+}
+
+.wl-iconbtn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--color-wine);
+  border: 1px solid var(--wine-light-border);
+  color: var(--color-cream);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 0.15s ease;
+}
+.wl-iconbtn:hover { background: var(--color-wine-light); }
+
+/* Account control in the header (replaces the old settings gear). */
+.wl-signin {
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--gold-border);
+  background: var(--gold-tint-strong);
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.wl-signin:hover { background: var(--gold-tint-medium); }
+
+.wl-account { position: relative; flex: 0 0 auto; }
+.wl-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--wine-light-border);
+  background: var(--color-wine);
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  overflow: hidden;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.wl-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.wl-account-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  min-width: 200px;
+  background: var(--color-wine);
+  border: 1px solid var(--wine-light-border);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 10px;
+  z-index: 30;
+}
+.wl-account-menu__name {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--cream-85);
+  padding: 4px 8px 8px;
+  border-bottom: 1px solid var(--wine-light-border);
+  margin-bottom: 6px;
+  word-break: break-word;
+}
+.wl-account-menu__logout {
+  width: 100%;
+  text-align: left;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--color-cream);
+  font-family: var(--font-body);
+  font-size: 13px;
+  cursor: pointer;
+}
+.wl-account-menu__logout:hover { background: var(--color-wine-light); }
+
+/* Search sheet — shared by movie (SearchSheet) and book (BookSearchSheet) search. */
+.ss-header {
+  display: flex; align-items: flex-start; gap: 12px;
+  max-width: 390px; margin: 0 auto; padding: 56px 20px 0;
+}
+.ss-back {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--color-wine); border: 1px solid var(--wine-light-border);
+  color: var(--color-cream); font-size: 20px; cursor: pointer; flex: 0 0 auto;
+}
+.ss-back:hover { background: var(--color-wine-light); }
+.ss-eyebrow {
+  font-family: var(--font-body); font-weight: 600; font-size: 11px;
+  letter-spacing: 1.4px; color: var(--color-gold); margin-bottom: 4px;
+}
+.ss-title {
+  font-family: var(--font-display); font-weight: 700; font-size: 26px;
+  letter-spacing: -0.4px; color: var(--color-cream); margin: 0;
+}
+.ss-bar {
+  max-width: 390px; margin: 22px auto 0; padding: 0 20px;
+  display: flex; gap: 8px;
+}
+.ss-input {
+  flex: 1; min-width: 0; height: 48px; padding: 0 16px; border-radius: 14px;
+  border: 1px solid var(--wine-light-border); background: var(--color-wine);
+  color: var(--color-cream); font-family: var(--font-body); font-size: 15px; outline: none;
+}
+.ss-input:focus { border-color: var(--gold-border); }
+.ss-find {
+  height: 48px; padding: 0 22px; border-radius: 14px; border: none;
+  background: var(--color-gold); color: var(--color-wine-deep);
+  font-family: var(--font-body); font-weight: 600; font-size: 15px; cursor: pointer;
+}
+.ss-find:disabled { opacity: 0.6; cursor: default; }
+.ss-error {
+  max-width: 390px; margin: 12px auto 0; padding: 0 20px;
+  font-family: var(--font-body); font-size: 13px; color: #e08a8a;
+}
+.ss-results {
+  max-width: 390px; margin: 18px auto 0; padding: 0 20px 48px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.ss-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--color-wine); border: 1px solid var(--wine-light-border);
+  border-radius: 14px; padding: 8px;
+}
+.ss-row__main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;
+}
+.ss-poster {
+  width: 44px; height: 64px; border-radius: 8px; object-fit: cover; flex: 0 0 auto;
+  background: var(--color-wine-deep);
+}
+.ss-poster--blank { display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.ss-row__text { min-width: 0; }
+.ss-row__title {
+  font-family: var(--font-display); font-weight: 700; font-size: 16px;
+  color: var(--color-cream); line-height: 1.2;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ss-row__year { font-family: var(--font-body); font-size: 12px; color: var(--cream-60); margin-top: 2px; }
+.ss-save {
+  flex: 0 0 auto; height: 36px; padding: 0 14px; border-radius: 10px;
+  border: 1px solid var(--gold-border); background: var(--gold-tint-strong);
+  color: var(--color-cream); font-family: var(--font-body); font-weight: 600;
+  font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.ss-save:disabled { opacity: 0.6; cursor: default; }
 
 .wl-title {
   font-family: var(--font-display);

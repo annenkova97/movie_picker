@@ -2,6 +2,7 @@ import anthropic
 from typing import Optional
 from backend.config import ANTHROPIC_API_KEY
 from backend.models.movie import Movie
+from backend.models.book import Book
 
 
 class LLMService:
@@ -68,6 +69,56 @@ class LLMService:
 
         return message.content[0].text.strip()
 
+    async def describe_and_tease(self, plot: str, title: str) -> tuple[str, str]:
+        """Краткое описание + интригующий «крючок» одним запросом.
+
+        Описание идёт в БД (Mini-App, /list), «крючок» — отдельным сообщением
+        в боте сразу после сохранения, чтобы ещё раз заинтересовать. Один
+        вызов вместо двух — дешевле. Возвращает ``(description, hook)``; при
+        нераспознанном формате hook будет пустым (см. ``_parse_description_and_hook``).
+        """
+        if not plot:
+            return "", ""
+
+        prompt = f"""Опиши фильм "{title}" на русском.
+
+1. ОПИСАНИЕ — 2-3 предложения: главная идея и атмосфера, без спойлеров.
+2. КРЮЧОК — одно короткое интригующее предложение, после которого захочется
+   посмотреть фильм. Без спойлеров и без оценок.
+
+Полный сюжет для анализа:
+{plot}
+
+Ответь СТРОГО в таком формате, каждый пункт с новой строки:
+ОПИСАНИЕ: <текст>
+КРЮЧОК: <текст>"""
+
+        message = await self.client.messages.create(
+            model=self.model,
+            max_tokens=350,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        return self._parse_description_and_hook(message.content[0].text.strip())
+
+    @staticmethod
+    def _parse_description_and_hook(text: str) -> tuple[str, str]:
+        """Разбирает ответ ``describe_and_tease`` в ``(description, hook)``.
+
+        Фолбэк: если меток нет — весь ответ считаем описанием, hook пустой.
+        """
+        description, hook = "", ""
+        for line in text.splitlines():
+            stripped = line.strip()
+            upper = stripped.upper()
+            if upper.startswith("ОПИСАНИЕ:"):
+                description = stripped.split(":", 1)[1].strip()
+            elif upper.startswith("КРЮЧОК:"):
+                hook = stripped.split(":", 1)[1].strip()
+        if not description and not hook:
+            description = text.strip()
+        return description, hook
+
     async def recommend_movies(
         self,
         user_query: str,
@@ -110,6 +161,57 @@ class LLMService:
 ОБЪЯСНЕНИЕ: Почему эти фильмы подходят под запрос (2-3 предложения на русском).
 
 Если ни один фильм не подходит, напиши:
+РЕКОМЕНДАЦИИ: []
+ОБЪЯСНЕНИЕ: Причина, почему ничего не подходит."""
+
+        message = await self.client.messages.create(
+            model=self.model,
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompt}]
+        )
+
+        response_text = message.content[0].text.strip()
+        return self._parse_recommendation_response(response_text)
+
+    async def recommend_books(
+        self,
+        user_query: str,
+        books: list[Book],
+        max_recommendations: int = 3
+    ) -> tuple[list[int], str]:
+        """Подбор книги под настроение. Возвращает список ID книг и объяснение.
+
+        Делит парсер ответа с ``recommend_movies`` — формат вывода идентичный.
+        """
+        if not books:
+            return [], "В вашем списке пока нет книг для рекомендаций."
+
+        books_info = []
+        for b in books:
+            info = f"[ID:{b.id}] «{b.title}» ({b.year or 'год неизвестен'})"
+            if b.authors:
+                info += f" — {', '.join(b.authors[:2])}"
+            if b.subjects:
+                info += f" | Темы: {', '.join(b.subjects[:3])}"
+            if b.description:
+                info += f" | {b.description[:200]}"
+            books_info.append(info)
+
+        books_text = "\n".join(books_info)
+
+        prompt = f"""Ты — помощник по выбору книг. Пользователь хочет почитать что-то из своего списка.
+
+Запрос пользователя: "{user_query}"
+
+Список книг пользователя (непрочитанные):
+{books_text}
+
+Выбери от 1 до {max_recommendations} наиболее подходящих книг.
+Отвечай строго в формате:
+РЕКОМЕНДАЦИИ: [ID1, ID2, ID3]
+ОБЪЯСНЕНИЕ: Почему эти книги подходят под запрос (2-3 предложения на русском).
+
+Если ни одна книга не подходит, напиши:
 РЕКОМЕНДАЦИИ: []
 ОБЪЯСНЕНИЕ: Причина, почему ничего не подходит."""
 

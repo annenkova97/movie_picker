@@ -5,6 +5,7 @@ from backend import database as db
 from backend.services.llm import llm_service
 from backend.services.title_search import find_movie_by_query
 from handlers.callbacks import _get_or_create_user
+from handlers.formatting import imdb_suffix
 
 
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -56,7 +57,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем
     movie = await db.add_movie(movie_base, user_id=user_id, source="telegram")
 
-    rating = f"  ★ {movie.imdb_rating}" if movie.imdb_rating else ""
+    rating = imdb_suffix(movie.imdb_rating, "  ★ ")
     year = f" ({movie.year})" if movie.year else ""
     genres = f"\n{', '.join(movie.genres)}" if movie.genres else ""
     desc = f"\n_«{movie.description}»_" if movie.description else ""

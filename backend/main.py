@@ -12,7 +12,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from backend import config
 from backend import database as db
 from backend.rate_limit import limiter
-from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares
+from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares, books, telegram_webhook
 from backend.services.awards_seed import sync_awards_catalog
 
 
@@ -36,9 +36,38 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             print(f"Не удалось синхронизировать каталог наград: {exc}")
 
+    # Telegram-бот через webhook в этом же процессе. Включается только когда
+    # заданы токен + публичный URL + секрет. Локально — пусто, бот гоняется
+    # отдельно через `python bot.py` (long-polling).
+    app.state.bot_app = None
+    if (
+        config.TELEGRAM_BOT_TOKEN
+        and config.PUBLIC_BASE_URL
+        and config.TELEGRAM_WEBHOOK_SECRET
+    ):
+        try:
+            from bot_setup import build_application
+            bot_app = build_application()
+            await bot_app.initialize()
+            await bot_app.start()
+            webhook_url = (
+                f"{config.PUBLIC_BASE_URL}/telegram/webhook/"
+                f"{config.TELEGRAM_WEBHOOK_SECRET}"
+            )
+            await bot_app.bot.set_webhook(url=webhook_url, drop_pending_updates=True)
+            app.state.bot_app = bot_app
+            print(f"[bot] webhook set: {webhook_url}", flush=True)
+        except Exception as exc:
+            print(f"[bot] failed to start webhook bot: {exc}", flush=True)
+
     yield
 
-    # Cleanup при остановке (если нужно)
+    if getattr(app.state, "bot_app", None) is not None:
+        try:
+            await app.state.bot_app.stop()
+            await app.state.bot_app.shutdown()
+        except Exception as exc:
+            print(f"[bot] shutdown error: {exc}", flush=True)
     print("Приложение остановлено")
 
 
@@ -73,6 +102,8 @@ app.include_router(instagram.router)
 app.include_router(telegram.router)
 app.include_router(awards.router)
 app.include_router(shares.router)
+app.include_router(books.router)
+app.include_router(telegram_webhook.router)
 app.include_router(health.router)
 
 # Статические файлы frontend (собранный Vite-бандл)

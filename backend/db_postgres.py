@@ -16,11 +16,19 @@ from datetime import datetime
 from typing import Optional
 
 from backend.models.movie import Movie, MovieBase
+from backend.models.book import Book, BookBase
 
 SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
-    "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru"
+    "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
+    "user_rating, user_note, watched_at"
+)
+
+BOOK_SELECT_COLUMNS = (
+    "id, work_key, title, authors, year, subjects, description, cover_url, "
+    "rating, is_read, source, rec_source, rec_note, in_library, added_at, "
+    "user_rating, user_note, read_at"
 )
 
 _pool: Optional[asyncpg.Pool] = None
@@ -100,6 +108,10 @@ async def init_db() -> None:
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_user_imdb "
             "ON movies(user_id, imdb_id) WHERE user_id IS NOT NULL"
         )
+        # Дневник для фильмов: личная оценка/заметка/дата просмотра.
+        await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS user_rating REAL")
+        await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS user_note TEXT")
+        await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS watched_at TIMESTAMP")
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS shared_lists (
                 id SERIAL PRIMARY KEY,
@@ -119,6 +131,35 @@ async def init_db() -> None:
             "CREATE INDEX IF NOT EXISTS idx_shared_lists_expires "
             "ON shared_lists(expires_at)"
         )
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                work_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                authors TEXT DEFAULT '[]',
+                year INTEGER,
+                subjects TEXT DEFAULT '[]',
+                description TEXT,
+                cover_url TEXT,
+                rating REAL,
+                is_read BOOLEAN DEFAULT FALSE,
+                source TEXT DEFAULT 'personal',
+                rec_source TEXT,
+                rec_note TEXT,
+                in_library BOOLEAN DEFAULT TRUE,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_books_user_id ON books(user_id)")
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_books_user_work "
+            "ON books(user_id, work_key) WHERE user_id IS NOT NULL"
+        )
+        # Дневник для книг: личная оценка/заметка/дата прочтения.
+        await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS user_rating REAL")
+        await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS user_note TEXT")
+        await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS read_at TIMESTAMP")
 
 
 def _row_to_movie(row) -> Movie:
@@ -147,6 +188,11 @@ def _row_to_movie(row) -> Movie:
         award=row[19],
         award_year=row[20],
         plot_ru=row[21],
+        user_rating=row[22],
+        user_note=row[23],
+        watched_at=row[24] if (row[24] is None or isinstance(row[24], datetime)) else (
+            datetime.fromisoformat(str(row[24])) if row[24] else None
+        ),
     )
 
 
@@ -405,6 +451,8 @@ async def update_movie(
     rec_source: Optional[str] = None,
     rec_note: Optional[str] = None,
     in_library: Optional[bool] = None,
+    user_rating: Optional[float] = None,
+    user_note: Optional[str] = None,
 ) -> Optional[Movie]:
     sets = []
     params: list = []
@@ -412,6 +460,9 @@ async def update_movie(
     if is_watched is not None:
         params.append(is_watched)
         sets.append(f"is_watched = ${len(params)}")
+        if is_watched:
+            params.append(datetime.now())
+            sets.append(f"watched_at = COALESCE(watched_at, ${len(params)})")
     if rec_source is not None:
         params.append(rec_source)
         sets.append(f"rec_source = ${len(params)}")
@@ -421,6 +472,12 @@ async def update_movie(
     if in_library is not None:
         params.append(in_library)
         sets.append(f"in_library = ${len(params)}")
+    if user_rating is not None:
+        params.append(user_rating if user_rating > 0 else None)
+        sets.append(f"user_rating = ${len(params)}")
+    if user_note is not None:
+        params.append(user_note or None)
+        sets.append(f"user_note = ${len(params)}")
 
     if not sets:
         return await get_user_movie_by_id(movie_id, user_id)
@@ -443,6 +500,14 @@ async def set_plot_ru(movie_id: int, plot_ru: str) -> None:
     async with _pool.acquire() as conn:
         await conn.execute(
             "UPDATE movies SET plot_ru = $1 WHERE id = $2", plot_ru, movie_id
+        )
+
+
+async def set_description(movie_id: int, description: str) -> None:
+    """Сохранить краткое описание. Догенерация в фоне после сохранения в боте."""
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE movies SET description = $1 WHERE id = $2", description, movie_id
         )
 
 
@@ -470,6 +535,184 @@ async def delete_movie(movie_id: int, user_id: int) -> bool:
 
 async def get_unwatched_movies(user_id: int) -> list[Movie]:
     return await get_all_movies(user_id=user_id, is_watched=False, in_library=True)
+
+
+# ── books ────────────────────────────────────────────────────────────────────
+
+
+def _row_to_book(row) -> Book:
+    return Book(
+        id=row[0],
+        work_key=row[1],
+        title=row[2],
+        authors=json.loads(row[3]) if row[3] else [],
+        year=row[4],
+        subjects=json.loads(row[5]) if row[5] else [],
+        description=row[6],
+        cover_url=row[7],
+        rating=row[8],
+        is_read=bool(row[9]),
+        source=row[10],
+        rec_source=row[11],
+        rec_note=row[12],
+        in_library=bool(row[13]) if row[13] is not None else True,
+        added_at=row[14] if isinstance(row[14], datetime) else (
+            datetime.fromisoformat(str(row[14])) if row[14] else datetime.now()
+        ),
+        user_rating=row[15],
+        user_note=row[16],
+        read_at=row[17] if (row[17] is None or isinstance(row[17], datetime)) else (
+            datetime.fromisoformat(str(row[17])) if row[17] else None
+        ),
+    )
+
+
+async def get_all_books(
+    user_id: int,
+    source: Optional[str] = None,
+    is_read: Optional[bool] = None,
+    in_library: Optional[bool] = None,
+) -> list[Book]:
+    conditions = ["user_id = $1"]
+    params: list = [user_id]
+    if source:
+        params.append(source)
+        conditions.append(f"source = ${len(params)}")
+    if is_read is not None:
+        params.append(is_read)
+        conditions.append(f"is_read = ${len(params)}")
+    if in_library is not None:
+        params.append(in_library)
+        conditions.append(f"in_library = ${len(params)}")
+    query = (
+        f"SELECT {BOOK_SELECT_COLUMNS} FROM books "
+        f"WHERE {' AND '.join(conditions)} "
+        "ORDER BY added_at DESC"
+    )
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(query, *params)
+        return [_row_to_book(r) for r in rows]
+
+
+async def get_unread_books(user_id: int) -> list[Book]:
+    return await get_all_books(user_id=user_id, is_read=False, in_library=True)
+
+
+async def get_user_book_by_id(book_id: int, user_id: int) -> Optional[Book]:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE id = $1 AND user_id = $2",
+            book_id, user_id,
+        )
+        return _row_to_book(row) if row else None
+
+
+async def get_user_book_by_work_key(work_key: str, user_id: int) -> Optional[Book]:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE work_key = $1 AND user_id = $2",
+            work_key, user_id,
+        )
+        return _row_to_book(row) if row else None
+
+
+async def add_book(
+    book: BookBase,
+    user_id: int,
+    source: str = "personal",
+    rec_source: Optional[str] = None,
+    rec_note: Optional[str] = None,
+    in_library: bool = True,
+) -> Book:
+    async with _pool.acquire() as conn:
+        book_id = await conn.fetchval(
+            """
+            INSERT INTO books (
+                user_id, work_key, title, authors, year, subjects, description,
+                cover_url, rating, source, rec_source, rec_note, in_library
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
+            ) RETURNING id
+            """,
+            user_id,
+            book.work_key,
+            book.title,
+            json.dumps(book.authors),
+            book.year,
+            json.dumps(book.subjects),
+            book.description,
+            book.cover_url,
+            book.rating,
+            source,
+            rec_source,
+            rec_note,
+            in_library,
+        )
+        row = await conn.fetchrow(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE id = $1", book_id
+        )
+        return _row_to_book(row)
+
+
+async def update_book(
+    book_id: int,
+    user_id: int,
+    is_read: Optional[bool] = None,
+    rec_source: Optional[str] = None,
+    rec_note: Optional[str] = None,
+    in_library: Optional[bool] = None,
+    user_rating: Optional[float] = None,
+    user_note: Optional[str] = None,
+) -> Optional[Book]:
+    sets = []
+    params: list = []
+    if is_read is not None:
+        params.append(is_read)
+        sets.append(f"is_read = ${len(params)}")
+        if is_read:
+            params.append(datetime.now())
+            sets.append(f"read_at = COALESCE(read_at, ${len(params)})")
+    if rec_source is not None:
+        params.append(rec_source)
+        sets.append(f"rec_source = ${len(params)}")
+    if rec_note is not None:
+        params.append(rec_note)
+        sets.append(f"rec_note = ${len(params)}")
+    if in_library is not None:
+        params.append(in_library)
+        sets.append(f"in_library = ${len(params)}")
+    if user_rating is not None:
+        params.append(user_rating if user_rating > 0 else None)
+        sets.append(f"user_rating = ${len(params)}")
+    if user_note is not None:
+        params.append(user_note or None)
+        sets.append(f"user_note = ${len(params)}")
+    if not sets:
+        return await get_user_book_by_id(book_id, user_id)
+
+    params.append(book_id)
+    n_id = len(params)
+    params.append(user_id)
+    n_uid = len(params)
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            f"UPDATE books SET {', '.join(sets)} "
+            f"WHERE id = ${n_id} AND user_id = ${n_uid}",
+            *params,
+        )
+    return await get_user_book_by_id(book_id, user_id)
+
+
+async def delete_book(book_id: int, user_id: int) -> bool:
+    async with _pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM books WHERE id = $1 AND user_id = $2",
+            book_id, user_id,
+        )
+        try:
+            return int(result.split()[-1]) > 0
+        except Exception:
+            return False
 
 
 # ── shared lists ─────────────────────────────────────────────────────────────

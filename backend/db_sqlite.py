@@ -4,12 +4,20 @@ from datetime import datetime
 from typing import Optional
 from backend.config import DATABASE_PATH
 from backend.models.movie import Movie, MovieBase
+from backend.models.book import Book, BookBase
 
 
 SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
-    "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru"
+    "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
+    "user_rating, user_note, watched_at"
+)
+
+BOOK_SELECT_COLUMNS = (
+    "id, work_key, title, authors, year, subjects, description, cover_url, "
+    "rating, is_read, source, rec_source, rec_note, in_library, added_at, "
+    "user_rating, user_note, read_at"
 )
 
 
@@ -19,9 +27,11 @@ async def _column_exists(db: aiosqlite.Connection, table: str, column: str) -> b
     return column in cols
 
 
-async def _ensure_column(db: aiosqlite.Connection, column: str, decl: str) -> None:
-    if not await _column_exists(db, "movies", column):
-        await db.execute(f"ALTER TABLE movies ADD COLUMN {column} {decl}")
+async def _ensure_column(
+    db: aiosqlite.Connection, table: str, column: str, decl: str
+) -> None:
+    if not await _column_exists(db, table, column):
+        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
 
 async def _ensure_users_table(db: aiosqlite.Connection) -> None:
@@ -142,14 +152,20 @@ async def init_db():
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        await _ensure_column(db, "rec_source", "TEXT")
-        await _ensure_column(db, "rec_note", "TEXT")
-        await _ensure_column(db, "in_library", "BOOLEAN DEFAULT 1")
-        await _ensure_column(db, "award", "TEXT")
-        await _ensure_column(db, "award_year", "INTEGER")
-        await _ensure_column(db, "plot_ru", "TEXT")
+        await _ensure_column(db, "movies", "rec_source", "TEXT")
+        await _ensure_column(db, "movies", "rec_note", "TEXT")
+        await _ensure_column(db, "movies", "in_library", "BOOLEAN DEFAULT 1")
+        await _ensure_column(db, "movies", "award", "TEXT")
+        await _ensure_column(db, "movies", "award_year", "INTEGER")
+        await _ensure_column(db, "movies", "plot_ru", "TEXT")
 
         await _migrate_movies_add_user_id(db)
+
+        # Дневник: личная оценка/заметка/дата просмотра. Ставим ПОСЛЕ миграции
+        # user_id — она пересоздаёт таблицу movies и иначе затёрла бы их.
+        await _ensure_column(db, "movies", "user_rating", "REAL")
+        await _ensure_column(db, "movies", "user_note", "TEXT")
+        await _ensure_column(db, "movies", "watched_at", "TIMESTAMP")
 
         await db.execute("CREATE INDEX IF NOT EXISTS idx_imdb_id ON movies(imdb_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_source ON movies(source)")
@@ -176,6 +192,37 @@ async def init_db():
             "CREATE INDEX IF NOT EXISTS idx_shared_lists_expires "
             "ON shared_lists(expires_at)"
         )
+
+        # books — параллельная фильмам таблица (книги из Open Library).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                work_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                authors TEXT DEFAULT '[]',
+                year INTEGER,
+                subjects TEXT DEFAULT '[]',
+                description TEXT,
+                cover_url TEXT,
+                rating REAL,
+                is_read BOOLEAN DEFAULT FALSE,
+                source TEXT DEFAULT 'personal',
+                rec_source TEXT,
+                rec_note TEXT,
+                in_library BOOLEAN DEFAULT 1,
+                added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_books_user_id ON books(user_id)")
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_books_user_work "
+            "ON books(user_id, work_key)"
+        )
+        # Дневник для книг: личная оценка/заметка/дата прочтения.
+        await _ensure_column(db, "books", "user_rating", "REAL")
+        await _ensure_column(db, "books", "user_note", "TEXT")
+        await _ensure_column(db, "books", "read_at", "TIMESTAMP")
         await db.commit()
 
 
@@ -350,6 +397,9 @@ def _row_to_movie(row: aiosqlite.Row) -> Movie:
         award=row[19],
         award_year=row[20],
         plot_ru=row[21],
+        user_rating=row[22],
+        user_note=row[23],
+        watched_at=datetime.fromisoformat(row[24]) if row[24] else None,
     )
 
 
@@ -496,6 +546,8 @@ async def update_movie(
     rec_source: Optional[str] = None,
     rec_note: Optional[str] = None,
     in_library: Optional[bool] = None,
+    user_rating: Optional[float] = None,
+    user_note: Optional[str] = None,
 ) -> Optional[Movie]:
     """Обновить поля фильма пользователя."""
     sets = []
@@ -503,6 +555,10 @@ async def update_movie(
     if is_watched is not None:
         sets.append("is_watched = ?")
         params.append(1 if is_watched else 0)
+        if is_watched:
+            # Дата первого просмотра — не перетираем, если уже стоит.
+            sets.append("watched_at = COALESCE(watched_at, ?)")
+            params.append(datetime.now().isoformat())
     if rec_source is not None:
         sets.append("rec_source = ?")
         params.append(rec_source)
@@ -512,6 +568,12 @@ async def update_movie(
     if in_library is not None:
         sets.append("in_library = ?")
         params.append(1 if in_library else 0)
+    if user_rating is not None:
+        sets.append("user_rating = ?")
+        params.append(user_rating if user_rating > 0 else None)  # 0 — очистить
+    if user_note is not None:
+        sets.append("user_note = ?")
+        params.append(user_note or None)
     if not sets:
         return await get_user_movie_by_id(movie_id, user_id)
 
@@ -529,6 +591,15 @@ async def set_plot_ru(movie_id: int, plot_ru: str) -> None:
     """Сохранить перевод сюжета. Используется фоновым переводчиком по PK."""
     async with aiosqlite.connect(DATABASE_PATH) as conn:
         await conn.execute("UPDATE movies SET plot_ru = ? WHERE id = ?", (plot_ru, movie_id))
+        await conn.commit()
+
+
+async def set_description(movie_id: int, description: str) -> None:
+    """Сохранить краткое описание. Догенерация в фоне после сохранения в боте."""
+    async with aiosqlite.connect(DATABASE_PATH) as conn:
+        await conn.execute(
+            "UPDATE movies SET description = ? WHERE id = ?", (description, movie_id)
+        )
         await conn.commit()
 
 
@@ -559,6 +630,175 @@ async def delete_movie(movie_id: int, user_id: int) -> bool:
 async def get_unwatched_movies(user_id: int) -> list[Movie]:
     """Непросмотренные фильмы пользователя для рекомендаций."""
     return await get_all_movies(user_id=user_id, is_watched=False, in_library=True)
+
+
+# ----- books ---------------------------------------------------------------
+
+
+def _row_to_book(row: aiosqlite.Row) -> Book:
+    return Book(
+        id=row[0],
+        work_key=row[1],
+        title=row[2],
+        authors=json.loads(row[3]) if row[3] else [],
+        year=row[4],
+        subjects=json.loads(row[5]) if row[5] else [],
+        description=row[6],
+        cover_url=row[7],
+        rating=row[8],
+        is_read=bool(row[9]),
+        source=row[10],
+        rec_source=row[11],
+        rec_note=row[12],
+        in_library=bool(row[13]) if row[13] is not None else True,
+        added_at=datetime.fromisoformat(row[14]) if row[14] else datetime.now(),
+        user_rating=row[15],
+        user_note=row[16],
+        read_at=datetime.fromisoformat(row[17]) if row[17] else None,
+    )
+
+
+async def get_all_books(
+    user_id: int,
+    source: Optional[str] = None,
+    is_read: Optional[bool] = None,
+    in_library: Optional[bool] = None,
+) -> list[Book]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        query = f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE user_id = ?"
+        params: list = [user_id]
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        if is_read is not None:
+            query += " AND is_read = ?"
+            params.append(1 if is_read else 0)
+        if in_library is not None:
+            query += " AND in_library = ?"
+            params.append(1 if in_library else 0)
+        query += " ORDER BY added_at DESC"
+        async with db.execute(query, params) as cursor:
+            rows = await cursor.fetchall()
+            return [_row_to_book(row) for row in rows]
+
+
+async def get_unread_books(user_id: int) -> list[Book]:
+    """Непрочитанные книги пользователя для рекомендаций."""
+    return await get_all_books(user_id=user_id, is_read=False, in_library=True)
+
+
+async def get_user_book_by_id(book_id: int, user_id: int) -> Optional[Book]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE id = ? AND user_id = ?",
+            (book_id, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return _row_to_book(row) if row else None
+
+
+async def get_user_book_by_work_key(work_key: str, user_id: int) -> Optional[Book]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE work_key = ? AND user_id = ?",
+            (work_key, user_id),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return _row_to_book(row) if row else None
+
+
+async def add_book(
+    book: BookBase,
+    user_id: int,
+    source: str = "personal",
+    rec_source: Optional[str] = None,
+    rec_note: Optional[str] = None,
+    in_library: bool = True,
+) -> Book:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute("""
+            INSERT INTO books (
+                user_id, work_key, title, authors, year, subjects, description,
+                cover_url, rating, source, rec_source, rec_note, in_library
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            user_id,
+            book.work_key,
+            book.title,
+            json.dumps(book.authors),
+            book.year,
+            json.dumps(book.subjects),
+            book.description,
+            book.cover_url,
+            book.rating,
+            source,
+            rec_source,
+            rec_note,
+            1 if in_library else 0,
+        ))
+        await db.commit()
+        book_id = cursor.lastrowid
+        async with db.execute(
+            f"SELECT {BOOK_SELECT_COLUMNS} FROM books WHERE id = ?", (book_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return _row_to_book(row)
+
+
+async def update_book(
+    book_id: int,
+    user_id: int,
+    is_read: Optional[bool] = None,
+    rec_source: Optional[str] = None,
+    rec_note: Optional[str] = None,
+    in_library: Optional[bool] = None,
+    user_rating: Optional[float] = None,
+    user_note: Optional[str] = None,
+) -> Optional[Book]:
+    sets = []
+    params: list = []
+    if is_read is not None:
+        sets.append("is_read = ?")
+        params.append(1 if is_read else 0)
+        if is_read:
+            sets.append("read_at = COALESCE(read_at, ?)")
+            params.append(datetime.now().isoformat())
+    if rec_source is not None:
+        sets.append("rec_source = ?")
+        params.append(rec_source)
+    if rec_note is not None:
+        sets.append("rec_note = ?")
+        params.append(rec_note)
+    if in_library is not None:
+        sets.append("in_library = ?")
+        params.append(1 if in_library else 0)
+    if user_rating is not None:
+        sets.append("user_rating = ?")
+        params.append(user_rating if user_rating > 0 else None)
+    if user_note is not None:
+        sets.append("user_note = ?")
+        params.append(user_note or None)
+    if not sets:
+        return await get_user_book_by_id(book_id, user_id)
+
+    params.extend([book_id, user_id])
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            f"UPDATE books SET {', '.join(sets)} WHERE id = ? AND user_id = ?",
+            params,
+        )
+        await db.commit()
+        return await get_user_book_by_id(book_id, user_id)
+
+
+async def delete_book(book_id: int, user_id: int) -> bool:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "DELETE FROM books WHERE id = ? AND user_id = ?",
+            (book_id, user_id),
+        )
+        await db.commit()
+        return cursor.rowcount > 0
 
 
 # ----- shared lists --------------------------------------------------------
