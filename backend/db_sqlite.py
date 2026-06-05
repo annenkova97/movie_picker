@@ -225,6 +225,15 @@ async def init_db():
         await _ensure_column(db, "books", "user_rating", "REAL")
         await _ensure_column(db, "books", "user_note", "TEXT")
         await _ensure_column(db, "books", "read_at", "TIMESTAMP")
+
+        # Маркеры разовых миграций/бэкфиллов (key → value): отрабатывают на старте
+        # один раз и не гоняют OMDB/LLM при каждом деплое.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         await db.commit()
 
 
@@ -372,6 +381,46 @@ def _row_to_user(row) -> dict:
 
 
 # ----- movies --------------------------------------------------------------
+
+
+async def meta_get(key: str) -> Optional[str]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT value FROM app_meta WHERE key = ?", (key,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else None
+
+
+async def meta_set(key: str, value: str) -> None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT INTO app_meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        await db.commit()
+
+
+async def get_all_movie_imdb_ids() -> list[str]:
+    """Уникальные imdb_id по всем строкам movies (для разовых бэкфиллов)."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("SELECT DISTINCT imdb_id FROM movies") as cur:
+            rows = await cur.fetchall()
+    return [r[0] for r in rows if r[0]]
+
+
+async def set_media_type_by_imdb(imdb_id: str, media_type: str) -> int:
+    """Проставляет media_type всем строкам с этим imdb_id. Возвращает число
+    изменённых строк."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cur = await db.execute(
+            "UPDATE movies SET media_type = ? "
+            "WHERE imdb_id = ? AND (media_type IS NULL OR media_type != ?)",
+            (media_type, imdb_id, media_type),
+        )
+        await db.commit()
+        return cur.rowcount
 
 
 def _row_to_movie(row: aiosqlite.Row) -> Movie:

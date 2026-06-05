@@ -165,6 +165,49 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS user_note TEXT")
         await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS read_at TIMESTAMP")
 
+        # Маркеры разовых миграций/бэкфиллов (key → value), чтобы они отрабатывали
+        # на старте один раз и не гоняли OMDB/LLM при каждом деплое.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+
+
+async def meta_get(key: str) -> Optional[str]:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT value FROM app_meta WHERE key = $1", key)
+        return row[0] if row else None
+
+
+async def meta_set(key: str, value: str) -> None:
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO app_meta (key, value) VALUES ($1, $2) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            key, value,
+        )
+
+
+async def get_all_movie_imdb_ids() -> list[str]:
+    """Уникальные imdb_id по всем строкам movies (для разовых бэкфиллов)."""
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch("SELECT DISTINCT imdb_id FROM movies")
+    return [r[0] for r in rows if r[0]]
+
+
+async def set_media_type_by_imdb(imdb_id: str, media_type: str) -> int:
+    """Проставляет media_type всем строкам с этим imdb_id (тип общий для тайтла,
+    так покрываем сразу всех пользователей). Возвращает число изменённых строк."""
+    async with _pool.acquire() as conn:
+        res = await conn.execute(
+            "UPDATE movies SET media_type = $1 "
+            "WHERE imdb_id = $2 AND media_type IS DISTINCT FROM $1",
+            media_type, imdb_id,
+        )
+    return int(res.split()[-1])
+
 
 def _row_to_movie(row) -> Movie:
     return Movie(
