@@ -9,6 +9,7 @@ class MovieBase(BaseModel):
     title: str
     original_title: Optional[str] = None
     year: Optional[int] = None
+    media_type: str = "movie"  # "movie" или "series" (для разбивки фильмы/сериалы)
     genres: list[str] = []
     description: Optional[str] = None  # Краткое описание от LLM
     plot: Optional[str] = None  # Полный сюжет из OMDB
@@ -96,6 +97,7 @@ class MoviePreview(BaseModel):
     imdb_id: str
     title: str
     year: Optional[int] = None
+    media_type: str = "movie"  # "movie" или "series"
     poster_url: Optional[str] = None
     imdb_rating: Optional[float] = None
     genres: list[str] = []

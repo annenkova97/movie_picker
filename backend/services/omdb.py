@@ -122,11 +122,18 @@ class OMDBService:
             except ValueError:
                 pass
 
+        # OMDB отдаёт "Type": movie / series / episode / game. Сериалы и их
+        # эпизоды кладём в категорию «сериалы», всё остальное — «фильмы».
+        media_type = "series" if (data.get("Type") or "").lower() in (
+            "series", "episode",
+        ) else "movie"
+
         return MovieBase(
             imdb_id=data.get("imdbID", ""),
             title=data.get("Title", ""),
             original_title=data.get("Title"),
             year=year,
+            media_type=media_type,
             genres=genres,
             plot=data.get("Plot") if data.get("Plot") != "N/A" else None,
             cast=cast,

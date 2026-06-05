@@ -328,6 +328,7 @@ function uiMovieToSavedFilm(m: UiMovie, lang: Lang): SavedFilm {
     title: m.title,
     award: m.award ?? undefined,
     year: m.year ?? 0,
+    isSeries: m.isSeries,
     genre,
     runtime: formatRuntime(m.runtime),
     rating: m.publicRating,

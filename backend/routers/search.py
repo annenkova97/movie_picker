@@ -46,6 +46,7 @@ async def get_movie_preview(
         imdb_id=movie.imdb_id,
         title=movie.title,
         year=movie.year,
+        media_type=movie.media_type,
         poster_url=movie.poster_url,
         imdb_rating=movie.imdb_rating,
         genres=movie.genres,

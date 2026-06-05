@@ -11,7 +11,7 @@ SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
     "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
-    "user_rating, user_note, watched_at"
+    "user_rating, user_note, watched_at, media_type"
 )
 
 BOOK_SELECT_COLUMNS = (
@@ -166,6 +166,8 @@ async def init_db():
         await _ensure_column(db, "movies", "user_rating", "REAL")
         await _ensure_column(db, "movies", "user_note", "TEXT")
         await _ensure_column(db, "movies", "watched_at", "TIMESTAMP")
+        # movie / series — для разбивки библиотеки на «Фильмы» и «Сериалы».
+        await _ensure_column(db, "movies", "media_type", "TEXT DEFAULT 'movie'")
 
         await db.execute("CREATE INDEX IF NOT EXISTS idx_imdb_id ON movies(imdb_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_source ON movies(source)")
@@ -400,6 +402,7 @@ def _row_to_movie(row: aiosqlite.Row) -> Movie:
         user_rating=row[22],
         user_note=row[23],
         watched_at=datetime.fromisoformat(row[24]) if row[24] else None,
+        media_type=row[25] or "movie",
     )
 
 
@@ -507,8 +510,8 @@ async def add_movie(
             INSERT INTO movies (
                 user_id, imdb_id, title, original_title, year, genres, description,
                 plot, cast, director, poster_url, imdb_rating, awards, source,
-                rec_source, rec_note, in_library, award, award_year
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                rec_source, rec_note, in_library, award, award_year, media_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             movie.imdb_id,
@@ -529,6 +532,7 @@ async def add_movie(
             1 if in_library else 0,
             award,
             award_year,
+            movie.media_type,
         ))
         await db.commit()
         movie_id = cursor.lastrowid

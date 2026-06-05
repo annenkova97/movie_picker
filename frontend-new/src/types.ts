@@ -41,6 +41,7 @@ export interface ApiMovie {
   title: string;
   original_title: string | null;
   year: number | null;
+  media_type?: string | null;
   genres: string[];
   description: string | null;
   plot: string | null;
@@ -68,6 +69,7 @@ export interface UiMovie {
   imdbId: string;
   title: string;
   year: number | null;
+  isSeries: boolean;
   runtime: number;
   director: string;
   cast: string[];
@@ -134,6 +136,7 @@ export function toUiMovie(m: ApiMovie): UiMovie {
     imdbId: m.imdb_id,
     title,
     year: m.year,
+    isSeries: (m.media_type || 'movie').toLowerCase() === 'series',
     runtime: parseRuntime(m.awards),
     director: m.director || '',
     cast: m.cast || [],
