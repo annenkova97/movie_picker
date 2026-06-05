@@ -503,6 +503,14 @@ async def set_plot_ru(movie_id: int, plot_ru: str) -> None:
         )
 
 
+async def set_description(movie_id: int, description: str) -> None:
+    """Сохранить краткое описание. Догенерация в фоне после сохранения в боте."""
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE movies SET description = $1 WHERE id = $2", description, movie_id
+        )
+
+
 async def get_movies_missing_plot_ru() -> list[Movie]:
     async with _pool.acquire() as conn:
         rows = await conn.fetch(

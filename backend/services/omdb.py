@@ -1,3 +1,4 @@
+import time
 import httpx
 from typing import Optional
 from backend.config import OMDB_API_KEY, OMDB_BASE_URL
@@ -7,9 +8,15 @@ from backend.models.movie import MovieBase, OMDBSearchResult
 class OMDBService:
     """Сервис для работы с OMDB API"""
 
+    # Детали фильма по IMDb ID практически не меняются — суток кэша достаточно,
+    # чтобы один и тот же фильм, сохраняемый разными людьми, не бил по OMDB
+    # повторно (и не съедал дневной лимит).
+    _BY_ID_TTL = 24 * 3600
+
     def __init__(self):
         self.api_key = OMDB_API_KEY
         self.base_url = OMDB_BASE_URL
+        self._by_id_cache: dict[str, tuple[float, MovieBase]] = {}
 
     async def search_movies(self, query: str, media_type: str = "movie") -> list[OMDBSearchResult]:
         """Поиск фильмов по названию"""
@@ -38,7 +45,16 @@ class OMDBService:
             return results
 
     async def get_movie_by_id(self, imdb_id: str) -> Optional[MovieBase]:
-        """Получить детали фильма по IMDb ID"""
+        """Получить детали фильма по IMDb ID (с кэшем на сутки).
+
+        Возвращаем копию (``model_copy``), потому что вызывающие иногда
+        дописывают поля (например, ``description``) — оригинал в кэше трогать
+        нельзя.
+        """
+        cached = self._by_id_cache.get(imdb_id)
+        if cached and (time.monotonic() - cached[0]) < self._BY_ID_TTL:
+            return cached[1].model_copy(deep=True)
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 self.base_url,
@@ -53,7 +69,10 @@ class OMDBService:
             if data.get("Response") == "False":
                 return None
 
-            return self._parse_movie(data)
+            movie = self._parse_movie(data)
+
+        self._by_id_cache[imdb_id] = (time.monotonic(), movie)
+        return movie.model_copy(deep=True)
 
     async def get_movie_by_title(self, title: str, year: Optional[int] = None) -> Optional[MovieBase]:
         """Получить детали фильма по названию"""

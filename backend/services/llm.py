@@ -69,6 +69,56 @@ class LLMService:
 
         return message.content[0].text.strip()
 
+    async def describe_and_tease(self, plot: str, title: str) -> tuple[str, str]:
+        """Краткое описание + интригующий «крючок» одним запросом.
+
+        Описание идёт в БД (Mini-App, /list), «крючок» — отдельным сообщением
+        в боте сразу после сохранения, чтобы ещё раз заинтересовать. Один
+        вызов вместо двух — дешевле. Возвращает ``(description, hook)``; при
+        нераспознанном формате hook будет пустым (см. ``_parse_description_and_hook``).
+        """
+        if not plot:
+            return "", ""
+
+        prompt = f"""Опиши фильм "{title}" на русском.
+
+1. ОПИСАНИЕ — 2-3 предложения: главная идея и атмосфера, без спойлеров.
+2. КРЮЧОК — одно короткое интригующее предложение, после которого захочется
+   посмотреть фильм. Без спойлеров и без оценок.
+
+Полный сюжет для анализа:
+{plot}
+
+Ответь СТРОГО в таком формате, каждый пункт с новой строки:
+ОПИСАНИЕ: <текст>
+КРЮЧОК: <текст>"""
+
+        message = await self.client.messages.create(
+            model=self.model,
+            max_tokens=350,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        return self._parse_description_and_hook(message.content[0].text.strip())
+
+    @staticmethod
+    def _parse_description_and_hook(text: str) -> tuple[str, str]:
+        """Разбирает ответ ``describe_and_tease`` в ``(description, hook)``.
+
+        Фолбэк: если меток нет — весь ответ считаем описанием, hook пустой.
+        """
+        description, hook = "", ""
+        for line in text.splitlines():
+            stripped = line.strip()
+            upper = stripped.upper()
+            if upper.startswith("ОПИСАНИЕ:"):
+                description = stripped.split(":", 1)[1].strip()
+            elif upper.startswith("КРЮЧОК:"):
+                hook = stripped.split(":", 1)[1].strip()
+        if not description and not hook:
+            description = text.strip()
+        return description, hook
+
     async def recommend_movies(
         self,
         user_query: str,

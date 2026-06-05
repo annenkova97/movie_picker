@@ -72,8 +72,14 @@ def register_handlers(app: Application) -> None:
 
 
 def build_application(post_init=None) -> Application:
-    """Build a PTB Application with all handlers registered."""
-    builder = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN)
+    """Build a PTB Application with all handlers registered.
+
+    ``concurrent_updates(True)`` lets the long-polling path (``bot.py``) process
+    updates in parallel instead of one-at-a-time, so a slow handler no longer
+    blocks every other tap. The webhook path feeds ``process_update`` directly
+    per HTTP request, so it's already concurrent there — the flag is harmless.
+    """
+    builder = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).concurrent_updates(True)
     if post_init is not None:
         builder = builder.post_init(post_init)
     app = builder.build()

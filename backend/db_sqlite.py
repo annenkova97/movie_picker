@@ -594,6 +594,15 @@ async def set_plot_ru(movie_id: int, plot_ru: str) -> None:
         await conn.commit()
 
 
+async def set_description(movie_id: int, description: str) -> None:
+    """Сохранить краткое описание. Догенерация в фоне после сохранения в боте."""
+    async with aiosqlite.connect(DATABASE_PATH) as conn:
+        await conn.execute(
+            "UPDATE movies SET description = ? WHERE id = ?", (description, movie_id)
+        )
+        await conn.commit()
+
+
 async def get_movies_missing_plot_ru() -> list[Movie]:
     """Любые фильмы (каталог или личные) без русского перевода сюжета."""
     async with aiosqlite.connect(DATABASE_PATH) as conn:

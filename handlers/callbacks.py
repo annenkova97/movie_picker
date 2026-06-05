@@ -15,26 +15,35 @@ from backend.services.llm import llm_service
 from handlers.formatting import imdb_suffix
 
 
-def _saved_confirmation_keyboard(movie_id: int) -> InlineKeyboardMarkup:
-    """Inline keyboard for the design §6.3 Save Confirmation card.
+def _saved_confirmation_keyboard() -> InlineKeyboardMarkup | None:
+    """Карточка после сохранения: только «Открыть в Lentochka».
 
-    Row 1: open the Mini-App (WebApp button) — only added if MINI_APP_URL
-    is configured; otherwise users open the app via BotFather's menu.
-    Row 2: corrective actions — "Не тот фильм?" and "Удалить".
+    Раньше тут были «Не тот фильм?» и «Удалить» — их убрали: после явного
+    сохранения они только путали (пользователь уже выбрал фильм). Если
+    MINI_APP_URL не задан — возвращаем None (клавиатура убирается совсем).
     """
-    rows: list[list[InlineKeyboardButton]] = []
-    if MINI_APP_URL:
-        rows.append([
-            InlineKeyboardButton(
-                "📖 Открыть в Lentochka",
-                web_app=WebAppInfo(url=MINI_APP_URL),
-            ),
-        ])
-    rows.append([
-        InlineKeyboardButton("Не тот фильм?", callback_data=f"wrong:{movie_id}"),
-        InlineKeyboardButton("Удалить", callback_data=f"delete:{movie_id}"),
-    ])
-    return InlineKeyboardMarkup(rows)
+    if not MINI_APP_URL:
+        return None
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton(
+            "📖 Открыть в Lentochka",
+            web_app=WebAppInfo(url=MINI_APP_URL),
+        ),
+    ]])
+
+
+def _loading_keyboard() -> InlineKeyboardMarkup:
+    """Мгновенный лоадер вместо «застывшей» кнопки «+ Сохранить»."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("⏳ Сохраняю…", callback_data="noop"),
+    ]])
+
+
+def _save_button_keyboard(imdb_id: str) -> InlineKeyboardMarkup:
+    """Кнопка «+ Сохранить» — чтобы восстановить карточку при ошибке OMDB."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("+ Сохранить", callback_data=f"add:{imdb_id}"),
+    ]])
 
 
 async def _get_or_create_user(tg_user) -> dict:
@@ -64,22 +73,22 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    data = query.data or ""
+    if ":" not in data:
+        return  # неактивные плейсхолдеры, напр. лоадер «⏳ Сохраняю…» (noop)
+    action, value = data.split(":", 1)
+
     user_row = await _get_or_create_user(query.from_user)
     user_id = user_row["id"]
 
-    data = query.data
-    action, value = data.split(":", 1)
-
     if action == "add":
-        await _handle_add(query, value, user_id=user_id)
+        await _handle_add(query, value, user_id=user_id, context=context)
     elif action == "watch":
         await _handle_watch(query, int(value), user_id=user_id, watched=True)
     elif action == "unwatch":
         await _handle_watch(query, int(value), user_id=user_id, watched=False)
     elif action == "delete":
         await _handle_delete(query, int(value), user_id=user_id)
-    elif action == "wrong":
-        await _handle_wrong(query, int(value), user_id=user_id)
     elif action == "addbook":
         await _handle_add_book(query, value, user_id=user_id)
     elif action == "readbook":
@@ -90,42 +99,44 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_rate(query, value, user_id=user_id, context=context)
 
 
-async def _handle_add(query, imdb_id: str, *, user_id: int):
-    """Сохраняет фильм в библиотеку и переключает карточку в Save Confirmation.
+async def _handle_add(query, imdb_id: str, *, user_id: int, context):
+    """Сохраняет фильм в библиотеку — быстро, без ожидания LLM.
 
-    На карточке-превью кнопка «+ Сохранить» меняется на дизайн-спека ряд
-    «Открыть в Lentochka / Не тот фильм? / Удалить». Дополнительно
-    отправляется короткое подтверждение в голосе бренда («сохранила»).
+    Раньше карточка «висела» 1–3 сек: после OMDB бот ждал, пока Claude
+    сгенерит описание, и только потом сохранял и отвечал. Но описание в
+    подтверждении не показывается — оно нужно только Mini-App. Поэтому теперь:
+    мгновенный лоадер → OMDB → запись в БД → подтверждение с рейтингом, а
+    описание и «крючок» догоняются в фоне (см. ``_enrich_saved_movie``).
     """
     existing = await db.get_user_movie_by_imdb_id(imdb_id, user_id)
     if existing:
         await query.edit_message_reply_markup(
-            reply_markup=_saved_confirmation_keyboard(existing.id),
+            reply_markup=_saved_confirmation_keyboard(),
         )
         await query.message.reply_text(
             f"«{existing.title}» уже в твоём списке."
         )
         return
 
+    # Мгновенная реакция на тап — лоадер вместо «застывшей» кнопки.
+    await query.edit_message_reply_markup(reply_markup=_loading_keyboard())
+
     movie_base = await omdb_service.get_movie_by_id(imdb_id)
     if not movie_base:
-        await query.message.reply_text("Не получилось загрузить фильм.")
+        # Возвращаем кнопку, чтобы можно было повторить.
+        await query.edit_message_reply_markup(
+            reply_markup=_save_button_keyboard(imdb_id),
+        )
+        await query.message.reply_text(
+            "Не получилось загрузить фильм. Попробуй ещё раз."
+        )
         return
 
-    if movie_base.plot:
-        try:
-            description = await llm_service.generate_short_description(
-                movie_base.plot, movie_base.title
-            )
-            movie_base.description = description
-        except Exception:
-            pass
-
+    # Сохраняем сразу, без описания — догенерим его в фоне.
     movie = await db.add_movie(movie_base, user_id=user_id, source="telegram")
 
-    # Swap the preview keyboard for the Save Confirmation row.
     await query.edit_message_reply_markup(
-        reply_markup=_saved_confirmation_keyboard(movie.id),
+        reply_markup=_saved_confirmation_keyboard(),
     )
 
     rating = imdb_suffix(movie.imdb_rating, ", IMDb ")
@@ -134,17 +145,40 @@ async def _handle_add(query, imdb_id: str, *, user_id: int):
         parse_mode="Markdown",
     )
 
+    # Фоном: краткое описание (для Mini-App) + интригующий «крючок», который
+    # придёт отдельным сообщением через ~1 сек, чтобы ещё раз заинтересовать.
+    if movie_base.plot:
+        context.application.create_task(
+            _enrich_saved_movie(
+                query.message, movie.id, movie_base.plot, movie.title
+            )
+        )
 
-async def _handle_wrong(query, movie_id: int, *, user_id: int):
-    """«Не тот фильм?» — удаляет сохранение и подсказывает, как переподобрать."""
-    movie = await db.get_movie_by_id(movie_id, user_id=user_id)
-    title = movie.title if movie else "Фильм"
 
-    await db.delete_movie(movie_id, user_id=user_id)
-    await query.edit_message_reply_markup(reply_markup=None)
-    await query.message.reply_text(
-        f"Убрала «{title}» из списка. Напиши название текстом — поищу заново."
-    )
+async def _enrich_saved_movie(message, movie_id: int, plot: str, title: str) -> None:
+    """Фоновая догенерация после сохранения: описание в БД + «крючок» в чат.
+
+    Запускается через ``application.create_task`` уже после ответа пользователю,
+    поэтому ничего не блокирует. Любые сбои (LLM/БД/сеть) глотаем — это не
+    критичный путь, фильм уже сохранён.
+    """
+    try:
+        description, hook = await llm_service.describe_and_tease(plot, title)
+    except Exception:
+        return
+
+    if description:
+        try:
+            await db.set_description(movie_id, description)
+        except Exception:
+            pass
+
+    if hook:
+        # Без parse_mode — текст от LLM может содержать «*»/«_» и ломать Markdown.
+        try:
+            await message.reply_text(f"🎬 {hook}")
+        except Exception:
+            pass
 
 
 async def _handle_watch(query, movie_id: int, *, user_id: int, watched: bool):
