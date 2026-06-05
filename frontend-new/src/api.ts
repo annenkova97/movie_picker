@@ -53,6 +53,7 @@ export interface MoviePreview {
   imdb_id: string;
   title: string;
   year: number | null;
+  media_type?: string | null;
   poster_url: string | null;
   imdb_rating: number | null;
   genres: string[];
@@ -91,6 +92,7 @@ export interface ParsedMovieBase {
   title: string;
   original_title: string | null;
   year: number | null;
+  media_type?: string | null;
   genres: string[];
   description: string | null;
   plot: string | null;

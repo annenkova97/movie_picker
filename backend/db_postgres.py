@@ -22,7 +22,7 @@ SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
     "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
-    "user_rating, user_note, watched_at"
+    "user_rating, user_note, watched_at, media_type"
 )
 
 BOOK_SELECT_COLUMNS = (
@@ -112,6 +112,10 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS user_rating REAL")
         await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS user_note TEXT")
         await conn.execute("ALTER TABLE movies ADD COLUMN IF NOT EXISTS watched_at TIMESTAMP")
+        # movie / series — для разбивки библиотеки на «Фильмы» и «Сериалы».
+        await conn.execute(
+            "ALTER TABLE movies ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'movie'"
+        )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS shared_lists (
                 id SERIAL PRIMARY KEY,
@@ -193,6 +197,7 @@ def _row_to_movie(row) -> Movie:
         watched_at=row[24] if (row[24] is None or isinstance(row[24], datetime)) else (
             datetime.fromisoformat(str(row[24])) if row[24] else None
         ),
+        media_type=row[25] or "movie",
     )
 
 
@@ -412,10 +417,10 @@ async def add_movie(
             INSERT INTO movies (
                 user_id, imdb_id, title, original_title, year, genres, description,
                 plot, "cast", director, poster_url, imdb_rating, awards, source,
-                rec_source, rec_note, in_library, award, award_year
+                rec_source, rec_note, in_library, award, award_year, media_type
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15, $16, $17, $18, $19
+                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
             ) RETURNING id
             """,
             user_id,
@@ -437,6 +442,7 @@ async def add_movie(
             in_library,
             award,
             award_year,
+            movie.media_type,
         )
         row = await conn.fetchrow(
             f"SELECT {SELECT_COLUMNS} FROM movies WHERE id = $1", movie_id

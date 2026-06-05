@@ -8,6 +8,8 @@ export interface SavedFilm {
   title: string;
   award?: string;
   year: number;
+  /** True для сериалов — нужно, чтобы фильтр «Сериалы» отделял их от фильмов. */
+  isSeries?: boolean;
   genre: string;
   runtime: string;
   rating: number;
@@ -65,12 +67,19 @@ export function WatchlistMain({
   const { lang, setLang } = useSettings();
   const [filter, setFilter] = useState<Filter>('all');
 
+  const seriesCount = films.filter((f) => f.isSeries).length;
   const counts = {
     all: films.length,
-    movies: films.length, // no series flag in the data yet — placeholder
-    series: 0,
+    movies: films.length - seriesCount,
+    series: seriesCount,
     books: bookCount,
   };
+
+  const visibleFilms = films.filter((f) => {
+    if (filter === 'movies') return !f.isSeries;
+    if (filter === 'series') return f.isSeries;
+    return true;
+  });
 
   return (
     <div className="lt-screen wl-screen">
@@ -128,7 +137,7 @@ export function WatchlistMain({
           <button className="wl-share" type="button" onClick={onShare}>↗ {T.shareShort[lang]}</button>
         </div>
         <div className="wl-saved-list">
-          {films.map((film) => (
+          {visibleFilms.map((film) => (
             <SavedFilmCard key={film.id} film={film} onClick={() => onSelectFilm(film)} />
           ))}
         </div>

@@ -17,6 +17,7 @@ function previewToUiMovie(p: MoviePreview): UiMovie {
     title: p.title,
     original_title: null,
     year: p.year,
+    media_type: p.media_type ?? 'movie',
     genres: p.genres ?? [],
     description: null,
     plot: p.plot,
