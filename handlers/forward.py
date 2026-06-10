@@ -5,7 +5,13 @@
 распознаёт постеры/кадры), а книги дополнительно вытаскиваем из подписи.
 
 Фильмы резолвим через OMDB (``resolve_movies``), книги — через Google Books/
-Open Library (``resolve_books``). Под каждой карточкой кнопка «Добавить».
+Open Library (``resolve_books``). Если нашёлся единственный фильм — сохраняем
+его сразу (кнопки «Не тот» / «Не добавлять» позволяют откатить); если
+несколько — уточняем, какой сохранить, кнопкой «Добавить» под каждым.
+
+Источник рекомендации — telegram; если канал публичный, сохраняем и ссылку
+на сам пост (https://t.me/<канал>/<id>), чтобы из приложения можно было
+вернуться к оригиналу.
 """
 
 from __future__ import annotations
@@ -23,6 +29,24 @@ from backend.services.instagram_reader import cleanup_temp_files, extract_movies
 from backend.services.media_extractor import extract_media
 from backend.services.movie_resolver import resolve_movies
 from backend.services.book_resolver import resolve_books
+from handlers.callbacks import auto_add_movie, wrong_undo_keyboard
+from handlers.formatting import imdb_suffix
+from handlers.source_context import remember_source
+
+
+def _origin_post_url(msg) -> str | None:
+    """Ссылка на оригинальный пост, если переслано из публичного канала.
+
+    Для приватных каналов и пересылок от людей username нет — возвращаем None
+    (источник тогда сохраняется без ссылки).
+    """
+    origin = getattr(msg, "forward_origin", None)
+    chat = getattr(origin, "chat", None)
+    username = getattr(chat, "username", None)
+    message_id = getattr(origin, "message_id", None)
+    if username and message_id:
+        return f"https://t.me/{username}/{message_id}"
+    return None
 
 
 async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -41,6 +65,9 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = await msg.reply_text(
         "Разбираю пересланный пост... Это может занять до минуты."
     )
+
+    post_url = _origin_post_url(msg)
+    chat_id = update.effective_chat.id
 
     frame_paths: list[str] = []
     try:
@@ -70,11 +97,6 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await resolve_books(books_info, log_tag="forward") if books_info else ([], [])
         )
 
-        for movie in resolved_movies:
-            await _send_movie_card(msg, movie)
-        for book in resolved_books:
-            await _send_book_card(msg, book)
-
         unmatched = unmatched_movies + unmatched_books
         if unmatched:
             await msg.reply_text(
@@ -82,12 +104,46 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         total = len(resolved_movies) + len(resolved_books)
-        if total:
-            await status_msg.edit_text(
-                f"Готово! Нашёл {total}. Нажми «Добавить» под нужными."
+        if not total:
+            await status_msg.edit_text("Не нашла ни фильмов, ни книг в этом посте.")
+            return
+
+        # Единственный фильм (и ничего больше) — сохраняем сразу.
+        if len(resolved_movies) == 1 and not resolved_books:
+            movie_base = resolved_movies[0]
+            remember_source(chat_id, movie_base.imdb_id, "telegram", post_url)
+            movie, existed = await auto_add_movie(
+                msg, context, update.effective_user, movie_base,
+                rec_source="telegram", source_url=post_url,
             )
-        else:
-            await status_msg.edit_text("Не нашёл ни фильмов, ни книг в этом посте.")
+            await _send_movie_card(
+                msg, movie,
+                post_url=post_url,
+                saved_note="✔️ Уже в твоём списке." if existed
+                else "✅ Сохранила в твой список.",
+                keyboard=None if existed else wrong_undo_keyboard(movie.id),
+            )
+            await status_msg.edit_text(
+                "Этот фильм уже в твоём списке 👇" if existed
+                else "Нашла фильм и сразу сохранила 👇"
+            )
+            return
+
+        for movie in resolved_movies:
+            remember_source(chat_id, movie.imdb_id, "telegram", post_url)
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Добавить", callback_data=f"add:{movie.imdb_id}")]
+            ])
+            await _send_movie_card(msg, movie, post_url=post_url, keyboard=keyboard)
+        for book in resolved_books:
+            remember_source(chat_id, book.work_key, "telegram", post_url)
+            await _send_book_card(msg, book)
+
+        await status_msg.edit_text(
+            "Нашла несколько похожих вариантов. Уточни, какой сохранить?"
+            if total > 1
+            else "Готово! Нажми «Добавить», если хочешь сохранить."
+        )
 
     except Exception as exc:
         print(f"[forward_handler] ERROR: {traceback.format_exc()}", flush=True)
@@ -97,16 +153,22 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cleanup_temp_files(frame_paths)
 
 
-async def _send_movie_card(reply_to, movie) -> None:
-    """Карточка фильма с кнопкой «Добавить»."""
-    lines = [f"*{movie.title}* ({movie.year})"]
+async def _send_movie_card(
+    reply_to, movie, *, post_url: str | None = None,
+    saved_note: str | None = None, keyboard=None,
+) -> None:
+    """Карточка фильма: название, рейтинг, описание, ссылка на пост-источник."""
+    rating = imdb_suffix(getattr(movie, "imdb_rating", None), "  ★ ")
+    lines = [f"*{movie.title}* ({movie.year}){rating}"]
     if movie.description:
         lines.append(f"_{movie.description}_")
+    if post_url:
+        lines.append("")
+        lines.append(f"📢 из [Telegram]({post_url})")
+    if saved_note:
+        lines.append("")
+        lines.append(saved_note)
     text = "\n".join(lines)
-
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Добавить в список", callback_data=f"add:{movie.imdb_id}")]
-    ])
 
     if movie.poster_url:
         try:

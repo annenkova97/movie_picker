@@ -12,6 +12,8 @@ interface Film {
   rating: number;
   rationale: string;
   source: string;
+  /** Ссылка на оригинал рекомендации — источник становится тапабельным. */
+  sourceUrl?: string | null;
   streaming?: string;
   /** CSS background string for the stylized poster (gradient + decoration). */
   poster: {
@@ -126,7 +128,20 @@ function FilmResultCard({
         </div>
         <div className="ltr-card__rationale">«{film.rationale}»</div>
         <div className="ltr-card__bottom-row">
-          <span className="ltr-card__source">{film.source}</span>
+          {film.source && (film.sourceUrl ? (
+            <span
+              className="ltr-card__source ltr-card__source--link"
+              role="link"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(film.sourceUrl!, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              {film.source} ↗
+            </span>
+          ) : (
+            <span className="ltr-card__source">{film.source}</span>
+          ))}
           {film.streaming && (
             <span className="ltr-card__streaming">{film.streaming}</span>
           )}
@@ -421,6 +436,12 @@ const styles = `
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.ltr-card__source--link {
+  color: rgba(233, 217, 167, 0.85);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 .ltr-card__streaming {
   flex: 0 0 auto;

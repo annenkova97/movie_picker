@@ -12,7 +12,9 @@ from backend.config import MINI_APP_URL
 from backend.services import book_search
 from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
+from backend.services.title_search import search_title
 from handlers.formatting import imdb_suffix
+from handlers.source_context import get_source, remember_source
 
 
 def _saved_confirmation_keyboard() -> InlineKeyboardMarkup | None:
@@ -44,6 +46,25 @@ def _save_button_keyboard(imdb_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("+ Сохранить", callback_data=f"add:{imdb_id}"),
     ]])
+
+
+def wrong_undo_keyboard(movie_id: int) -> InlineKeyboardMarkup:
+    """Кнопки под только что сохранённым из ссылки фильмом.
+
+    Фильм уже в списке (сохраняем сразу, без подтверждения), поэтому кнопки —
+    только «откатить»: «Не тот» убирает и предлагает похожие варианты,
+    «Не добавлять» просто убирает.
+    """
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("Не тот", callback_data=f"wrong:{movie_id}"),
+        InlineKeyboardButton("Не добавлять", callback_data=f"undo:{movie_id}"),
+    ]])
+
+
+def _chat_id(query) -> int | None:
+    """chat_id сообщения с карточкой — ключ реестра источников."""
+    chat = getattr(getattr(query, "message", None), "chat", None)
+    return getattr(chat, "id", None)
 
 
 async def _get_or_create_user(tg_user) -> dict:
@@ -83,6 +104,10 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "add":
         await _handle_add(query, value, user_id=user_id, context=context)
+    elif action == "wrong":
+        await _handle_wrong(query, int(value), user_id=user_id)
+    elif action == "undo":
+        await _handle_undo(query, int(value), user_id=user_id)
     elif action == "watch":
         await _handle_watch(query, int(value), user_id=user_id, watched=True)
     elif action == "unwatch":
@@ -132,11 +157,26 @@ async def _handle_add(query, imdb_id: str, *, user_id: int, context):
         )
         return
 
-    # Сохраняем сразу, без описания — догенерим его в фоне.
-    movie = await db.add_movie(movie_base, user_id=user_id, source="telegram")
+    # Если карточка родилась из ссылки (Reel, пост в канале) — хендлер ссылки
+    # зарегистрировал её источник, сохраняем его вместе с фильмом.
+    chat_id = _chat_id(query)
+    src = get_source(chat_id, imdb_id) if chat_id is not None else None
 
+    # Сохраняем сразу, без описания — догенерим его в фоне. ``source`` всегда
+    # personal (это тип записи), канал рекомендации — в rec_source.
+    movie = await db.add_movie(
+        movie_base,
+        user_id=user_id,
+        source="personal",
+        rec_source=src.rec_source if src else None,
+        source_url=src.source_url if src else None,
+    )
+
+    # Для карточек из ссылок даём откат («Не тот» / «Не добавлять»); после
+    # явного выбора из поиска эти кнопки только путали бы.
     await query.edit_message_reply_markup(
-        reply_markup=_saved_confirmation_keyboard(),
+        reply_markup=wrong_undo_keyboard(movie.id) if src
+        else _saved_confirmation_keyboard(),
     )
 
     rating = imdb_suffix(movie.imdb_rating, ", IMDb ")
@@ -153,6 +193,98 @@ async def _handle_add(query, imdb_id: str, *, user_id: int, context):
                 query.message, movie.id, movie_base.plot, movie.title
             )
         )
+
+
+async def auto_add_movie(
+    message,
+    context,
+    tg_user,
+    movie_base,
+    *,
+    rec_source: str,
+    source_url: str | None,
+):
+    """Сохраняет фильм из ссылки сразу, без кнопки «Добавить».
+
+    Возвращает ``(movie, already_existed)``; ``movie is None`` не бывает.
+    Описание и «крючок» догоняются в фоне, как и при обычном сохранении.
+    """
+    user_row = await _get_or_create_user(tg_user)
+    user_id = user_row["id"]
+
+    existing = await db.get_user_movie_by_imdb_id(movie_base.imdb_id, user_id)
+    if existing:
+        return existing, True
+
+    movie = await db.add_movie(
+        movie_base,
+        user_id=user_id,
+        source="personal",
+        rec_source=rec_source,
+        source_url=source_url,
+    )
+
+    if movie_base.plot:
+        context.application.create_task(
+            _enrich_saved_movie(message, movie.id, movie_base.plot, movie.title)
+        )
+    return movie, False
+
+
+async def _handle_wrong(query, movie_id: int, *, user_id: int):
+    """«Не тот» под авто-сохранённым фильмом: убрать и показать похожие."""
+    movie = await db.get_user_movie_by_id(movie_id, user_id=user_id)
+    if not movie:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("Этого фильма уже нет в списке.")
+        return
+
+    await db.delete_movie(movie_id, user_id=user_id)
+    # Кнопка «+ Сохранить» возвращается — вдруг это всё-таки был он.
+    await query.edit_message_reply_markup(
+        reply_markup=_save_button_keyboard(movie.imdb_id),
+    )
+
+    results = await search_title(movie.title)
+    results = [r for r in results if r.imdb_id != movie.imdb_id][:4]
+    if not results:
+        await query.message.reply_text(
+            f"Убрала «{movie.title}». Похожих вариантов не нашла — "
+            "напиши название текстом, поищу ещё."
+        )
+        return
+
+    # Альтернативы — из той же ссылки, переносим на них источник.
+    chat_id = _chat_id(query)
+    src = get_source(chat_id, movie.imdb_id) if chat_id is not None else None
+    if chat_id is not None and src:
+        for r in results:
+            remember_source(chat_id, r.imdb_id, src.rec_source, src.source_url)
+
+    await query.message.reply_text(
+        f"Убрала «{movie.title}». Вот похожие варианты — выбери нужный:"
+    )
+    # Локальный импорт: search.py не зависит от callbacks, цикла нет, но
+    # держим его здесь, чтобы модульная зависимость была односторонней.
+    from handlers.search import send_search_results
+    await send_search_results(query.message, results)
+
+
+async def _handle_undo(query, movie_id: int, *, user_id: int):
+    """«Не добавлять» под авто-сохранённым фильмом: просто убрать из списка."""
+    movie = await db.get_user_movie_by_id(movie_id, user_id=user_id)
+    if not movie:
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("Этого фильма уже нет в списке.")
+        return
+
+    await db.delete_movie(movie_id, user_id=user_id)
+    await query.edit_message_reply_markup(
+        reply_markup=_save_button_keyboard(movie.imdb_id),
+    )
+    await query.message.reply_text(
+        f"Окей, «{movie.title}» не сохраняю. Передумаешь — кнопка на месте."
+    )
 
 
 async def _enrich_saved_movie(message, movie_id: int, plot: str, title: str) -> None:
@@ -218,7 +350,14 @@ async def _handle_add_book(query, work_key: str, *, user_id: int):
         await query.message.reply_text("Не получилось загрузить книгу.")
         return
 
-    book = await db.add_book(book_base, user_id=user_id, source="telegram")
+    chat_id = _chat_id(query)
+    src = get_source(chat_id, work_key) if chat_id is not None else None
+    book = await db.add_book(
+        book_base,
+        user_id=user_id,
+        source="personal",
+        rec_source=src.rec_source if src else None,
+    )
     await query.edit_message_reply_markup(
         reply_markup=_book_saved_keyboard(book.id, book.is_read),
     )

@@ -11,7 +11,7 @@ SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
     "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
-    "user_rating, user_note, watched_at, media_type"
+    "user_rating, user_note, watched_at, media_type, source_url"
 )
 
 BOOK_SELECT_COLUMNS = (
@@ -168,6 +168,9 @@ async def init_db():
         await _ensure_column(db, "movies", "watched_at", "TIMESTAMP")
         # movie / series — для разбивки библиотеки на «Фильмы» и «Сериалы».
         await _ensure_column(db, "movies", "media_type", "TEXT DEFAULT 'movie'")
+        # Ссылка на оригинал рекомендации (Reel / пост в канале) — по ней можно
+        # перейти из приложения к источнику, где фильм советовали.
+        await _ensure_column(db, "movies", "source_url", "TEXT")
 
         await db.execute("CREATE INDEX IF NOT EXISTS idx_imdb_id ON movies(imdb_id)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_source ON movies(source)")
@@ -234,7 +237,31 @@ async def init_db():
                 value TEXT
             )
         """)
+
+        await _backfill_bot_source(db)
+
         await db.commit()
+
+
+async def _backfill_bot_source(db: aiosqlite.Connection) -> None:
+    """Разовый бэкфилл: бот раньше писал ``source='telegram'`` всему подряд.
+
+    ``source`` — это тип записи (personal / top100 / awards), а канал
+    рекомендации живёт в ``rec_source``. Старые строки с ``source='telegram'``
+    добавлены через бота (в т.ч. простым текстом), реальный источник для них
+    неизвестен — поэтому переводим их в ``personal`` без ``rec_source``, чтобы
+    приложение не показывало ложное «из Telegram».
+    """
+    async with db.execute(
+        "SELECT value FROM app_meta WHERE key = 'bot_source_backfill_v1'"
+    ) as cur:
+        if await cur.fetchone():
+            return
+    await db.execute("UPDATE movies SET source = 'personal' WHERE source = 'telegram'")
+    await db.execute("UPDATE books SET source = 'personal' WHERE source = 'telegram'")
+    await db.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('bot_source_backfill_v1', 'done')"
+    )
 
 
 # ----- users ---------------------------------------------------------------
@@ -452,6 +479,7 @@ def _row_to_movie(row: aiosqlite.Row) -> Movie:
         user_note=row[23],
         watched_at=datetime.fromisoformat(row[24]) if row[24] else None,
         media_type=row[25] or "movie",
+        source_url=row[26],
     )
 
 
@@ -552,6 +580,7 @@ async def add_movie(
     in_library: bool = True,
     award: Optional[str] = None,
     award_year: Optional[int] = None,
+    source_url: Optional[str] = None,
 ) -> Movie:
     """Добавить фильм. `user_id=None` — глобальная запись (каталог наград)."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -559,8 +588,9 @@ async def add_movie(
             INSERT INTO movies (
                 user_id, imdb_id, title, original_title, year, genres, description,
                 plot, cast, director, poster_url, imdb_rating, awards, source,
-                rec_source, rec_note, in_library, award, award_year, media_type
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                rec_source, rec_note, in_library, award, award_year, media_type,
+                source_url
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             user_id,
             movie.imdb_id,
@@ -582,6 +612,7 @@ async def add_movie(
             award,
             award_year,
             movie.media_type,
+            source_url,
         ))
         await db.commit()
         movie_id = cursor.lastrowid

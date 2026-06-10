@@ -52,6 +52,18 @@ export function MovieDetail({
             )}
             <h2 className="md-title">{movie.title}</h2>
             <div className="md-meta">{meta}</div>
+            {movie.sourceUrl && (
+              <a
+                className="md-source"
+                href={movie.sourceUrl}
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                {movie.recSource === 'instagram'
+                  ? `📷 ${T.recSrcInstagram[lang]}`
+                  : `📢 ${T.recSrcTelegram[lang]}`} ↗
+              </a>
+            )}
           </div>
           <button className="md-close" onClick={onClose} aria-label={T.pickClose[lang]}>×</button>
         </div>
@@ -172,6 +184,11 @@ const styles = `
 }
 .md-meta {
   margin-top: 8px; font-family: var(--font-body); font-size: 13px; color: var(--cream-60);
+}
+.md-source {
+  display: inline-block; margin-top: 6px; font-family: var(--font-body);
+  font-size: 12px; color: var(--color-gold); text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .md-close {
   border: none; background: transparent; color: var(--cream-60);

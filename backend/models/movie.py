@@ -28,6 +28,7 @@ class Movie(MovieBase):
     source: str = "personal"  # personal / top100 / awards
     rec_source: Optional[str] = None  # telegram / instagram / friends / personal
     rec_note: Optional[str] = None  # откуда пришла рекомендация ("канал Х", "Аня посоветовала")
+    source_url: Optional[str] = None  # ссылка на оригинал рекомендации (Reel, пост в канале)
     in_library: bool = True  # True — на полке пользователя; False — только в каталоге наград
     award: Optional[str] = None  # "Oscar Best Picture", "Palme d'Or", ...
     award_year: Optional[int] = None  # год награды (может отличаться от year выпуска)

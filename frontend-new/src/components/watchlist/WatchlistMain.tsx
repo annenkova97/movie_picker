@@ -18,6 +18,8 @@ export interface SavedFilm {
   /** Italic 'why-saved' phrase that preserves the original recommendation's emotional energy. */
   italic: string;
   source: string;
+  /** Ссылка на оригинал рекомендации — источник становится тапабельным. */
+  sourceUrl?: string | null;
   streaming?: string;
   poster: {
     background: string;
@@ -207,7 +209,20 @@ function SavedFilmCard({ film, onClick }: { film: SavedFilm; onClick: () => void
         </div>
         <div className="wl-card__italic">«{film.italic}»</div>
         <div className="wl-card__bottom">
-          <span className="wl-card__source">{film.source}</span>
+          {film.source && (film.sourceUrl ? (
+            <span
+              className="wl-card__source wl-card__source--link"
+              role="link"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(film.sourceUrl!, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              {film.source} ↗
+            </span>
+          ) : (
+            <span className="wl-card__source">{film.source}</span>
+          ))}
           {film.userRating ? (
             <span className="wl-card__myrating" title="моя оценка">★ {film.userRating}</span>
           ) : null}
@@ -742,6 +757,12 @@ const styles = `
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.wl-card__source--link {
+  color: rgba(233, 217, 167, 0.85);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 .wl-card__myrating {
   flex: 0 0 auto;

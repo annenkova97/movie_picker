@@ -55,6 +55,8 @@ export interface ApiMovie {
   source: string;
   rec_source?: RecSource | null;
   rec_note?: string | null;
+  /** Ссылка на оригинал рекомендации (Reel, пост в канале). */
+  source_url?: string | null;
   in_library?: boolean;
   award?: string | null;
   award_year?: number | null;
@@ -78,6 +80,7 @@ export interface UiMovie {
   watched: boolean;
   recSource: RecSource;
   recNote: string | null;
+  sourceUrl: string | null;
   why: string | null;
   plot: string | null;
   plotRu: string | null;
@@ -145,6 +148,7 @@ export function toUiMovie(m: ApiMovie): UiMovie {
     watched: m.is_watched,
     recSource: normaliseRecSource(m.rec_source, m.source),
     recNote: m.rec_note ?? null,
+    sourceUrl: m.source_url ?? null,
     why: m.description ?? null,
     plot: m.plot && m.plot !== 'N/A' ? m.plot : null,
     plotRu: m.plot_ru && m.plot_ru !== 'N/A' ? m.plot_ru : null,

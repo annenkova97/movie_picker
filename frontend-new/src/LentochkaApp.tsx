@@ -45,6 +45,7 @@ interface TonightFilm {
   rating: number;
   rationale: string;
   source: string;
+  sourceUrl?: string | null;
   streaming?: string;
   poster: { background: string; overlay: string; overlayColor?: string };
 }
@@ -299,6 +300,9 @@ const SOURCE_LABEL_KEY: Record<RecSource, 'recSrcInstagram' | 'recSrcTelegram' |
 };
 
 function sourceCaption(src: RecSource, lang: Lang): string {
+  // «Личное» (добавлено руками, без источника) не подписываем — подпись
+  // источника нужна только когда фильм откуда-то пришёл.
+  if (src === 'personal') return '';
   return `${SOURCE_ICON[src]} ${T[SOURCE_LABEL_KEY[src]][lang]}`;
 }
 
@@ -335,6 +339,7 @@ function uiMovieToSavedFilm(m: UiMovie, lang: Lang): SavedFilm {
     userRating: m.userRating,
     italic: m.why ?? m.recNote ?? '',
     source: sourceCaption(m.recSource, lang),
+    sourceUrl: m.sourceUrl,
     streaming: undefined,
     poster: m.posterUrl
       ? { background: `center / cover no-repeat url("${m.posterUrl}") , ${gradientForHue(m.hue)}`, overlay: '' }
@@ -387,6 +392,7 @@ function apiMovieToTonightFilm(api: ApiMovie, lang: Lang): TonightFilm {
     rating: ui.publicRating,
     rationale: ui.why ?? ui.recNote ?? '',
     source: sourceCaption(ui.recSource, lang),
+    sourceUrl: ui.sourceUrl,
     streaming: undefined,
     poster: ui.posterUrl
       ? { background: `center / cover no-repeat url("${ui.posterUrl}") , ${gradientForHue(ui.hue)}`, overlay: '' }

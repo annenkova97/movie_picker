@@ -22,7 +22,7 @@ SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
     "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
-    "user_rating, user_note, watched_at, media_type"
+    "user_rating, user_note, watched_at, media_type, source_url"
 )
 
 BOOK_SELECT_COLUMNS = (
@@ -116,6 +116,10 @@ async def init_db() -> None:
         await conn.execute(
             "ALTER TABLE movies ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'movie'"
         )
+        # Ссылка на оригинал рекомендации (Reel / пост в канале).
+        await conn.execute(
+            "ALTER TABLE movies ADD COLUMN IF NOT EXISTS source_url TEXT"
+        )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS shared_lists (
                 id SERIAL PRIMARY KEY,
@@ -173,6 +177,25 @@ async def init_db() -> None:
                 value TEXT
             )
         """)
+
+        # Разовый бэкфилл: бот раньше писал source='telegram' всему подряд.
+        # source — тип записи (personal/top100/awards), канал рекомендации живёт
+        # в rec_source. Реальный источник старых строк неизвестен → personal.
+        done = await conn.fetchval(
+            "SELECT value FROM app_meta WHERE key = 'bot_source_backfill_v1'"
+        )
+        if not done:
+            await conn.execute(
+                "UPDATE movies SET source = 'personal' WHERE source = 'telegram'"
+            )
+            await conn.execute(
+                "UPDATE books SET source = 'personal' WHERE source = 'telegram'"
+            )
+            await conn.execute(
+                "INSERT INTO app_meta (key, value) "
+                "VALUES ('bot_source_backfill_v1', 'done') "
+                "ON CONFLICT (key) DO NOTHING"
+            )
 
 
 async def meta_get(key: str) -> Optional[str]:
@@ -241,6 +264,7 @@ def _row_to_movie(row) -> Movie:
             datetime.fromisoformat(str(row[24])) if row[24] else None
         ),
         media_type=row[25] or "movie",
+        source_url=row[26],
     )
 
 
@@ -453,6 +477,7 @@ async def add_movie(
     in_library: bool = True,
     award: Optional[str] = None,
     award_year: Optional[int] = None,
+    source_url: Optional[str] = None,
 ) -> Movie:
     async with _pool.acquire() as conn:
         movie_id = await conn.fetchval(
@@ -460,10 +485,11 @@ async def add_movie(
             INSERT INTO movies (
                 user_id, imdb_id, title, original_title, year, genres, description,
                 plot, "cast", director, poster_url, imdb_rating, awards, source,
-                rec_source, rec_note, in_library, award, award_year, media_type
+                rec_source, rec_note, in_library, award, award_year, media_type,
+                source_url
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
             ) RETURNING id
             """,
             user_id,
@@ -486,6 +512,7 @@ async def add_movie(
             award,
             award_year,
             movie.media_type,
+            source_url,
         )
         row = await conn.fetchrow(
             f"SELECT {SELECT_COLUMNS} FROM movies WHERE id = $1", movie_id
