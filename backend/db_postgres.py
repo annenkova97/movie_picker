@@ -22,7 +22,7 @@ SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
     "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
-    "user_rating, user_note, watched_at, media_type, source_url"
+    "user_rating, user_note, watched_at, media_type, source_url, runtime"
 )
 
 BOOK_SELECT_COLUMNS = (
@@ -119,6 +119,10 @@ async def init_db() -> None:
         # Ссылка на оригинал рекомендации (Reel / пост в канале).
         await conn.execute(
             "ALTER TABLE movies ADD COLUMN IF NOT EXISTS source_url TEXT"
+        )
+        # Длительность в минутах из OMDB (0 — OMDB не знает, NULL — не проверяли).
+        await conn.execute(
+            "ALTER TABLE movies ADD COLUMN IF NOT EXISTS runtime INTEGER"
         )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS shared_lists (
@@ -232,6 +236,32 @@ async def set_media_type_by_imdb(imdb_id: str, media_type: str) -> int:
     return int(res.split()[-1])
 
 
+async def get_imdb_ids_missing_runtime(limit: int = 300) -> list[str]:
+    """imdb_id записей без длительности (NULL = ещё не спрашивали у OMDB).
+
+    0 означает «спрашивали, OMDB не знает» — такие не возвращаем, чтобы
+    бэкфилл не дёргал OMDB по ним на каждом старте.
+    """
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT DISTINCT imdb_id FROM movies "
+            "WHERE runtime IS NULL AND imdb_id LIKE 'tt%' LIMIT $1",
+            limit,
+        )
+    return [r[0] for r in rows if r[0]]
+
+
+async def set_runtime_by_imdb(imdb_id: str, runtime: int) -> int:
+    """Проставляет runtime всем строкам с этим imdb_id (длительность общая для
+    тайтла — покрываем сразу всех пользователей)."""
+    async with _pool.acquire() as conn:
+        res = await conn.execute(
+            "UPDATE movies SET runtime = $1 WHERE imdb_id = $2 AND runtime IS NULL",
+            runtime, imdb_id,
+        )
+    return int(res.split()[-1])
+
+
 def _row_to_movie(row) -> Movie:
     return Movie(
         id=row[0],
@@ -265,6 +295,7 @@ def _row_to_movie(row) -> Movie:
         ),
         media_type=row[25] or "movie",
         source_url=row[26],
+        runtime=row[27],
     )
 
 
@@ -486,10 +517,10 @@ async def add_movie(
                 user_id, imdb_id, title, original_title, year, genres, description,
                 plot, "cast", director, poster_url, imdb_rating, awards, source,
                 rec_source, rec_note, in_library, award, award_year, media_type,
-                source_url
+                source_url, runtime
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21
+                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
             ) RETURNING id
             """,
             user_id,
@@ -513,6 +544,7 @@ async def add_movie(
             award_year,
             movie.media_type,
             source_url,
+            movie.runtime,
         )
         row = await conn.fetchrow(
             f"SELECT {SELECT_COLUMNS} FROM movies WHERE id = $1", movie_id

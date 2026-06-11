@@ -14,3 +14,4 @@ google-auth>=2.27.0
 email-validator>=2.1.0
 requests>=2.31.0
 slowapi>=0.1.9
+sentry-sdk[fastapi]>=2.0.0

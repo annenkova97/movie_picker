@@ -124,7 +124,12 @@ function FilmResultCard({
         {film.award && <div className="ltr-card__eyebrow">{film.award}</div>}
         <div className="ltr-card__title">{film.title}</div>
         <div className="ltr-card__meta">
-          {film.year} · {film.genre} · {film.runtime} · ★ {film.rating.toFixed(1)}
+          {[
+            film.year || null,
+            film.genre,
+            film.runtime || null,
+            film.rating > 0 ? `★ ${film.rating.toFixed(1)}` : null,
+          ].filter(Boolean).join(' · ')}
         </div>
         <div className="ltr-card__rationale">«{film.rationale}»</div>
         <div className="ltr-card__bottom-row">

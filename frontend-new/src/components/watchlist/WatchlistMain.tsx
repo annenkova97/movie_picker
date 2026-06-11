@@ -205,7 +205,12 @@ function SavedFilmCard({ film, onClick }: { film: SavedFilm; onClick: () => void
         {film.award && <div className="wl-card__eyebrow">{film.award}</div>}
         <div className="wl-card__title">{film.title}</div>
         <div className="wl-card__meta">
-          {film.year} · {film.genre} · {film.runtime} · ★ {film.rating.toFixed(1)}
+          {[
+            film.year || null,
+            film.genre,
+            film.runtime || null,
+            film.rating > 0 ? `★ ${film.rating.toFixed(1)}` : null,
+          ].filter(Boolean).join(' · ')}
         </div>
         <div className="wl-card__italic">«{film.italic}»</div>
         <div className="wl-card__bottom">
@@ -328,6 +333,7 @@ export function AccountButton({ onSignIn }: { onSignIn: () => void }) {
       {open && (
         <div className="wl-account-menu">
           <div className="wl-account-menu__name">{user.name || user.email}</div>
+          <a className="wl-account-menu__privacy" href="/privacy">{T.privacy[lang]}</a>
           {!isTelegram && (
             <button className="wl-account-menu__logout" onClick={() => { setOpen(false); logout(); }}>
               {T.logout[lang]}

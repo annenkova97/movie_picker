@@ -179,6 +179,7 @@ export const T = {
   authGoogleFail:    { ru: 'Google вход не удался', en: 'Google sign-in failed' } as Pair,
   signIn:            { ru: 'Войти',                en: 'Sign in' } as Pair,
   logout:        { ru: 'Выйти',                   en: 'Sign out' } as Pair,
+  privacy:       { ru: 'Конфиденциальность',      en: 'Privacy' } as Pair,
 
   // Guest signup prompt (bottom sheet shown after first save)
   guestSheetTitle:    { ru: 'Сохрани навсегда',

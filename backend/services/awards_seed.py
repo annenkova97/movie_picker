@@ -103,6 +103,31 @@ async def backfill_media_type() -> None:
     print(f"[media_type] сериалов проставлено: {changed}")
 
 
+async def backfill_runtime() -> None:
+    """Дозаполняет длительность у уже сохранённых записей из OMDB.
+
+    Маркер не нужен: NULL в runtime означает «не проверяли», 0 — «проверяли,
+    OMDB не знает». Каждый старт добивает до 300 непроверенных записей и
+    естественно затухает, когда NULL-ов не остаётся.
+    """
+    imdb_ids = await db.get_imdb_ids_missing_runtime(limit=300)
+    if not imdb_ids:
+        return
+
+    print(f"[runtime] дозаполняю длительность: {len(imdb_ids)} тайтлов")
+    filled = 0
+    for imdb_id in imdb_ids:
+        try:
+            movie = await omdb_service.get_movie_by_id(imdb_id)
+            # 0 пишем тоже — это маркер «проверено, данных нет».
+            runtime = movie.runtime if movie and movie.runtime is not None else 0
+            filled += await db.set_runtime_by_imdb(imdb_id, runtime)
+            await asyncio.sleep(0.2)  # не долбим OMDB
+        except Exception as exc:
+            print(f"[runtime] не удалось обработать {imdb_id}: {exc}")
+    print(f"[runtime] заполнено строк: {filled}")
+
+
 async def backfill_plot_ru() -> None:
     """Переводит plot на русский для всех фильмов, где plot_ru ещё пуст."""
     movies = await db.get_movies_missing_plot_ru()

@@ -317,12 +317,21 @@ function overlayForTitle(title: string): string {
 }
 
 function formatRuntime(minutes: number): string {
-  if (!minutes || minutes < 1) return '—';
+  // Пустая строка — «не знаем»: карточки просто не показывают сегмент,
+  // вместо прежней выдуманной константы 110 минут.
+  if (!minutes || minutes < 1) return '';
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
   if (h === 0) return `${m} мин`;
   if (m === 0) return `${h} ч`;
   return `${h} ч ${m} мин`;
+}
+
+function runtimeCaption(minutes: number, isSeries: boolean): string {
+  const base = formatRuntime(minutes);
+  if (!base) return '';
+  // У сериалов OMDB отдаёт длительность эпизода.
+  return isSeries ? `${base} / серия` : base;
 }
 
 function uiMovieToSavedFilm(m: UiMovie, lang: Lang): SavedFilm {
@@ -334,7 +343,7 @@ function uiMovieToSavedFilm(m: UiMovie, lang: Lang): SavedFilm {
     year: m.year ?? 0,
     isSeries: m.isSeries,
     genre,
-    runtime: formatRuntime(m.runtime),
+    runtime: runtimeCaption(m.runtime, m.isSeries),
     rating: m.publicRating,
     userRating: m.userRating,
     italic: m.why ?? m.recNote ?? '',
@@ -388,7 +397,7 @@ function apiMovieToTonightFilm(api: ApiMovie, lang: Lang): TonightFilm {
     award: ui.award ?? undefined,
     year: ui.year ?? 0,
     genre: ui.genres[0] ?? (lang === 'ru' ? 'фильм' : 'film'),
-    runtime: formatRuntime(ui.runtime),
+    runtime: runtimeCaption(ui.runtime, ui.isSeries),
     rating: ui.publicRating,
     rationale: ui.why ?? ui.recNote ?? '',
     source: sourceCaption(ui.recSource, lang),

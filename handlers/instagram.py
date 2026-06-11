@@ -11,6 +11,7 @@ from backend.services.instagram_reader import (
     validate_url,
     download_reel,
     extract_movies,
+    fetch_top_comments,
     cleanup_temp_files,
 )
 from backend.services.omdb import omdb_service
@@ -67,8 +68,20 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         if not movies_info:
+            # Из озвучки и подписи не понятно — смотрим самые залайканные
+            # комментарии: под вирусными рилзами название почти всегда там.
             await status_msg.edit_text(
-                "В этом Reel не нашла фильмов."
+                "В тексте название не нашла — смотрю комментарии..."
+            )
+            comments = await loop.run_in_executor(None, fetch_top_comments, url)
+            if comments:
+                movies_info = await loop.run_in_executor(
+                    None, extract_movies, transcript, caption, None, False, comments,
+                )
+
+        if not movies_info:
+            await status_msg.edit_text(
+                "В этом Reel не нашла фильмов — ни в тексте, ни в комментариях."
             )
             return
 

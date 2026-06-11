@@ -19,6 +19,9 @@ class MovieBase(BaseModel):
     poster_url: Optional[str] = None
     imdb_rating: Optional[float] = None
     awards: Optional[str] = None
+    # Минуты из OMDB Runtime ("148 min" → 148). 0 — «проверяли, OMDB не знает»
+    # (чтобы бэкфилл не перепроверял такие записи), None — ещё не проверяли.
+    runtime: Optional[int] = None
 
 
 class Movie(MovieBase):

@@ -1,17 +1,23 @@
-"""Парсинг пересланных постов из Telegram-каналов — фильмы И книги.
+"""Разбор «постов» в любом виде — фильмы И книги из любого формата сообщения.
 
-Текстовые посты разбираем единым экстрактором ``extract_media`` (фильмы +
-книги). Для постов с фото оставляем vision-пайплайн ``extract_movies`` (он
-распознаёт постеры/кадры), а книги дополнительно вытаскиваем из подписи.
+Единый пайплайн ``_process_post`` обслуживает четыре входа:
+  - пересланный пост из канала/чата (текст или фото с подписью);
+  - просто фото, отправленное в чат (постер/кадр — vision-путь);
+  - длинный вставленный текст (скопированный пост) — см. ``looks_like_post``;
+  - ссылка на пост t.me (текст поста забираем через публичный embed).
+
+Текст разбираем единым экстрактором ``extract_media`` (фильмы + книги). Для
+фото оставляем vision-пайплайн ``extract_movies`` (он распознаёт постеры и
+кадры), книги дополнительно вытаскиваем из подписи.
 
 Фильмы резолвим через OMDB (``resolve_movies``), книги — через Google Books/
 Open Library (``resolve_books``). Если нашёлся единственный фильм — сохраняем
 его сразу (кнопки «Не тот» / «Не добавлять» позволяют откатить); если
 несколько — уточняем, какой сохранить, кнопкой «Добавить» под каждым.
 
-Источник рекомендации — telegram; если канал публичный, сохраняем и ссылку
-на сам пост (https://t.me/<канал>/<id>), чтобы из приложения можно было
-вернуться к оригиналу.
+Источник рекомендации: telegram — для пересланных из каналов и t.me-ссылок
+(с ссылкой на пост, когда канал публичный); для простого фото/вставленного
+текста источник неизвестен и не пишется.
 """
 
 from __future__ import annotations
@@ -29,9 +35,23 @@ from backend.services.instagram_reader import cleanup_temp_files, extract_movies
 from backend.services.media_extractor import extract_media
 from backend.services.movie_resolver import resolve_movies
 from backend.services.book_resolver import resolve_books
+from backend.services import telegram_reader
 from handlers.callbacks import auto_add_movie, wrong_undo_keyboard
 from handlers.formatting import imdb_suffix
 from handlers.source_context import remember_source
+
+TELEGRAM_POST_URL_RE = telegram_reader.TELEGRAM_URL_PATTERN
+
+
+def looks_like_post(text: str) -> bool:
+    """Эвристика «это вставленный пост, а не название/запрос».
+
+    Название фильма или запрос на рекомендацию — одна короткая строка; пост —
+    несколько строк или длинный абзац. Порог сознательно консервативный, чтобы
+    не отнимать у поиска обычные названия.
+    """
+    text = (text or "").strip()
+    return "\n" in text or len(text) > 200
 
 
 def _origin_post_url(msg) -> str | None:
@@ -49,8 +69,17 @@ def _origin_post_url(msg) -> str | None:
     return None
 
 
+def _origin_rec_source(msg) -> str | None:
+    """telegram — если переслано из канала/чата; None — от человека или не
+    пересылка (источник рекомендации неизвестен, не выдумываем)."""
+    origin = getattr(msg, "forward_origin", None)
+    if getattr(origin, "chat", None) is not None:
+        return "telegram"
+    return None
+
+
 async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Извлекает фильмы и книги из пересланного сообщения и предлагает добавить."""
+    """Пересланные посты и просто фото в чат — общий вход пайплайна."""
     msg = update.message
     if msg is None:
         return
@@ -62,13 +91,83 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Голый стикер/опрос/видео — извлекать нечего, не шумим.
         return
 
-    status_msg = await msg.reply_text(
-        "Разбираю пересланный пост... Это может занять до минуты."
+    is_forwarded = getattr(msg, "forward_origin", None) is not None
+    if is_forwarded:
+        status_text = "Разбираю пересланный пост... Это может занять до минуты."
+    elif photo_sizes:
+        status_text = "Разбираю фото... Это может занять до минуты."
+    else:
+        status_text = "Разбираю текст... Это может занять до минуты."
+
+    await _process_post(
+        update, context,
+        text=text,
+        photo_sizes=photo_sizes,
+        rec_source=_origin_rec_source(msg),
+        post_url=_origin_post_url(msg),
+        status_text=status_text,
     )
 
-    post_url = _origin_post_url(msg)
-    chat_id = update.effective_chat.id
 
+async def telegram_link_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ссылка на пост t.me, отправленная текстом: читаем пост через публичный
+    embed и прогоняем через общий пайплайн с источником telegram."""
+    msg = update.message
+    if msg is None:
+        return
+
+    match = TELEGRAM_POST_URL_RE.search(msg.text or "")
+    if not match:
+        return
+    url = match.group(0)
+
+    status_msg = await msg.reply_text("Читаю пост из Telegram...")
+    try:
+        loop = asyncio.get_event_loop()
+        post = await loop.run_in_executor(None, telegram_reader.fetch_post, url)
+    except telegram_reader.TelegramReaderError as exc:
+        await status_msg.edit_text(f"Не получилось открыть пост: {exc}")
+        return
+
+    await _process_post(
+        update, context,
+        text=post.text,
+        photo_sizes=(),
+        rec_source="telegram",
+        post_url=post.url,
+        status_msg=status_msg,
+    )
+
+
+async def process_pasted_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Длинный вставленный текст из ``text_handler`` — пост без источника."""
+    await _process_post(
+        update, context,
+        text=update.message.text.strip(),
+        photo_sizes=(),
+        rec_source=None,
+        post_url=None,
+        status_text="Похоже на пост — разбираю... Это может занять до минуты.",
+    )
+
+
+async def _process_post(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    *,
+    text: str,
+    photo_sizes,
+    rec_source: str | None,
+    post_url: str | None,
+    status_text: str | None = None,
+    status_msg=None,
+) -> None:
+    """Общий пайплайн: извлечь фильмы/книги → зарезолвить → карточки/авто-сейв."""
+    msg = update.message
+    if status_msg is None:
+        status_msg = await msg.reply_text(status_text or "Разбираю...")
+
+    chat_id = update.effective_chat.id
     frame_paths: list[str] = []
     try:
         films_info = []
@@ -91,10 +190,10 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             films_info, books_info = await extract_media(text)
 
         resolved_movies, unmatched_movies = (
-            await resolve_movies(films_info, log_tag="forward") if films_info else ([], [])
+            await resolve_movies(films_info, log_tag="post") if films_info else ([], [])
         )
         resolved_books, unmatched_books = (
-            await resolve_books(books_info, log_tag="forward") if books_info else ([], [])
+            await resolve_books(books_info, log_tag="post") if books_info else ([], [])
         )
 
         unmatched = unmatched_movies + unmatched_books
@@ -111,10 +210,11 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Единственный фильм (и ничего больше) — сохраняем сразу.
         if len(resolved_movies) == 1 and not resolved_books:
             movie_base = resolved_movies[0]
-            remember_source(chat_id, movie_base.imdb_id, "telegram", post_url)
+            if rec_source:
+                remember_source(chat_id, movie_base.imdb_id, rec_source, post_url)
             movie, existed = await auto_add_movie(
                 msg, context, update.effective_user, movie_base,
-                rec_source="telegram", source_url=post_url,
+                rec_source=rec_source, source_url=post_url,
             )
             await _send_movie_card(
                 msg, movie,
@@ -130,13 +230,15 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         for movie in resolved_movies:
-            remember_source(chat_id, movie.imdb_id, "telegram", post_url)
+            if rec_source:
+                remember_source(chat_id, movie.imdb_id, rec_source, post_url)
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("Добавить", callback_data=f"add:{movie.imdb_id}")]
             ])
             await _send_movie_card(msg, movie, post_url=post_url, keyboard=keyboard)
         for book in resolved_books:
-            remember_source(chat_id, book.work_key, "telegram", post_url)
+            if rec_source:
+                remember_source(chat_id, book.work_key, rec_source, post_url)
             await _send_book_card(msg, book)
 
         await status_msg.edit_text(
@@ -146,7 +248,7 @@ async def forward_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     except Exception as exc:
-        print(f"[forward_handler] ERROR: {traceback.format_exc()}", flush=True)
+        print(f"[post_handler] ERROR: {traceback.format_exc()}", flush=True)
         await status_msg.edit_text(f"Ошибка: {type(exc).__name__}: {exc}"[:4000])
     finally:
         if frame_paths:

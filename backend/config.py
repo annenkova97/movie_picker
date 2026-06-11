@@ -74,6 +74,11 @@ INSTAGRAM_TEMP_DIR = os.getenv(
 os.makedirs(INSTAGRAM_VIDEO_DIR, exist_ok=True)
 os.makedirs(INSTAGRAM_TEMP_DIR, exist_ok=True)
 
+# Sentry error tracking. Пусто — выключено (локалка, тесты); на проде задать
+# DSN из sentry.io → Project Settings → Client Keys (DSN).
+SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+SENTRY_ENVIRONMENT = os.getenv("SENTRY_ENVIRONMENT", "production")
+
 # Apify — Instagram парсится через их Instagram Scraper actor.
 # Токен берётся в https://console.apify.com/settings/integrations
 APIFY_TOKEN = os.getenv("APIFY_TOKEN", "")

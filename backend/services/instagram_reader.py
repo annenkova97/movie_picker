@@ -134,7 +134,15 @@ def _shortcode_from_url(url: str) -> str:
 
 
 def _run_apify_actor(actor: str, payload: dict, *, label: str = "apify") -> dict:
-    """Запускает любой Apify-actor и возвращает первый элемент его dataset'а.
+    """Запускает Apify-actor и возвращает первый элемент его dataset'а."""
+    items = _run_apify_actor_items(actor, payload, limit=1, label=label)
+    return items[0]
+
+
+def _run_apify_actor_items(
+    actor: str, payload: dict, *, limit: int, label: str = "apify"
+) -> list:
+    """Запускает любой Apify-actor и возвращает элементы его dataset'а.
 
     Используем async flow вместо ``run-sync-get-dataset-items``:
     он держит TCP-соединение всё время работы actor'а (30-40 секунд) и
@@ -200,7 +208,7 @@ def _run_apify_actor(actor: str, payload: dict, *, label: str = "apify") -> dict
     try:
         items_resp = httpx.get(
             APIFY_DATASET_ENDPOINT.format(dataset_id=dataset_id),
-            params={"token": APIFY_TOKEN, "limit": 1},
+            params={"token": APIFY_TOKEN, "limit": limit},
             timeout=30.0,
         )
     except httpx.HTTPError as exc:
@@ -221,7 +229,7 @@ def _run_apify_actor(actor: str, payload: dict, *, label: str = "apify") -> dict
             "Apify не вернул данных для этой ссылки — проверь, что Reel публичный"
         )
 
-    return items[0]
+    return items
 
 
 def _is_error_item(item: dict) -> bool:
@@ -289,6 +297,45 @@ def _caption_via_general_scraper(url: str) -> str:
     if _is_error_item(item):
         return ""
     return item.get("caption") or ""
+
+
+def fetch_top_comments(url: str, *, max_comments: int = 10) -> str:
+    """Самые залайканные комментарии к Reel — текстом, по одному в строке.
+
+    Фолбэк на случай, когда из озвучки и подписи название фильма не вытащить:
+    под вирусными рилзами кто-то почти всегда пишет, что это за фильм, и такие
+    комментарии собирают лайки. Возвращает '' на любую ошибку — фолбэк не
+    должен ронять основной разбор.
+    """
+    try:
+        items = _run_apify_actor_items(
+            APIFY_GENERAL_ACTOR,
+            {
+                "directUrls": [url],
+                "resultsType": "comments",
+                "resultsLimit": 50,
+                "addParentData": False,
+            },
+            limit=50,
+            label="instagram-comments",
+        )
+    except InstagramReaderError as exc:
+        print(f"[instagram_reader] comments fetch failed: {exc}")
+        return ""
+
+    comments = []
+    for item in items:
+        if not isinstance(item, dict) or _is_error_item(item):
+            continue
+        text = (item.get("text") or "").strip()
+        if not text:
+            continue
+        likes = item.get("likesCount") or 0
+        comments.append((likes, text))
+
+    comments.sort(key=lambda c: c[0], reverse=True)
+    lines = [f"- {text} ({likes} likes)" for likes, text in comments[:max_comments]]
+    return "\n".join(lines)
 
 
 def _download_video(video_url: str, dest_path: Path) -> None:
@@ -491,6 +538,7 @@ def extract_movies(
     caption: str,
     frame_paths: list[str] | None = None,
     use_vision: bool = False,
+    comments: str = "",
 ) -> list[MovieInfo]:
     if not OPENAI_API_KEY:
         raise InstagramReaderError("OPENAI_API_KEY is not set")
@@ -504,6 +552,14 @@ def extract_movies(
         text += f"Transcript:\n{transcript}\n\n"
     if caption:
         text += f"Caption:\n{caption}\n\n"
+    if comments:
+        # Комментарии зрителей — фолбэк, когда в озвучке/подписи названия нет:
+        # обычно кто-то называет фильм, и такой коммент собирает лайки.
+        text += (
+            "Top viewer comments (viewers often name the movie here; "
+            "trust highly-liked comments):\n"
+            f"{comments}\n\n"
+        )
     # Допускаем vision-only режим: пост может быть с одной фоткой постера/кадра
     # без текста — пусть модель опирается на изображение.
     if not text.strip() and not use_vision_model:

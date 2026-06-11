@@ -201,10 +201,10 @@ async def auto_add_movie(
     tg_user,
     movie_base,
     *,
-    rec_source: str,
+    rec_source: str | None,
     source_url: str | None,
 ):
-    """Сохраняет фильм из ссылки сразу, без кнопки «Добавить».
+    """Сохраняет фильм из поста/ссылки сразу, без кнопки «Добавить».
 
     Возвращает ``(movie, already_existed)``; ``movie is None`` не бывает.
     Описание и «крючок» догоняются в фоне, как и при обычном сохранении.

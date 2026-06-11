@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from typing import Optional
 import re
 from backend import database as db
@@ -10,6 +10,7 @@ from backend.models import (
     MovieUpdate,
     User,
 )
+from backend.rate_limit import limiter, user_or_ip_key
 from backend.services import omdb_service, llm_service
 
 
@@ -45,11 +46,17 @@ async def get_movie(movie_id: int, current_user: User = Depends(get_current_user
 
 
 @router.post("", response_model=Movie)
+@limiter.limit("60/hour", key_func=user_or_ip_key)
 async def add_movie(
+    request: Request,
     movie_data: MovieCreate,
     current_user: User = Depends(get_current_user),
 ):
-    """Добавить фильм в личную библиотеку по названию или IMDb ID (tt1234567)."""
+    """Добавить фильм в личную библиотеку по названию или IMDb ID (tt1234567).
+
+    Лимит мягкий (60/час на пользователя): внутри OMDB + LLM-вызов, без лимита
+    скрипт может выжечь дневную квоту OMDB и бюджет на описания.
+    """
     query = movie_data.query.strip()
 
     if query.startswith("tt") and query[2:].isdigit():
@@ -108,7 +115,9 @@ async def add_movie(
 
 
 @router.post("/by-imdb/{imdb_id}", response_model=Movie)
+@limiter.limit("60/hour", key_func=user_or_ip_key)
 async def add_movie_by_imdb_id(
+    request: Request,
     imdb_id: str,
     source: str = "personal",
     current_user: User = Depends(get_current_user),

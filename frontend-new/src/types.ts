@@ -51,6 +51,8 @@ export interface ApiMovie {
   poster_url: string | null;
   imdb_rating: number | null;
   awards: string | null;
+  /** Минуты из OMDB (0 или null — длительность неизвестна, в UI скрываем). */
+  runtime?: number | null;
   is_watched: boolean;
   source: string;
   rec_source?: RecSource | null;
@@ -109,10 +111,6 @@ export function hueFor(m: ApiMovie): number {
   return hashString(base) % 360;
 }
 
-function parseRuntime(awards: string | null): number {
-  return 110;
-}
-
 function daysBetween(iso: string): number {
   const then = new Date(iso).getTime();
   const now = Date.now();
@@ -140,7 +138,7 @@ export function toUiMovie(m: ApiMovie): UiMovie {
     title,
     year: m.year,
     isSeries: (m.media_type || 'movie').toLowerCase() === 'series',
-    runtime: parseRuntime(m.awards),
+    runtime: m.runtime ?? 0,
     director: m.director || '',
     cast: m.cast || [],
     genres: (m.genres || []).map((g) => g.toLowerCase()),
