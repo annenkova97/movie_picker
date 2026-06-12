@@ -84,7 +84,10 @@ async def test_handle_add_saves_fast_then_enriches():
         # Saved immediately, WITHOUT waiting on the LLM (description still empty).
         saved = await db.get_user_movie_by_imdb_id("tt_addflow1", user["id"])
         assert saved is not None
-        assert saved.source == "telegram"
+        # source — тип записи; канал рекомендации (rec_source) для карточки из
+        # текстового поиска не пишется: источника-ссылки у неё нет.
+        assert saved.source == "personal"
+        assert saved.rec_source is None
         assert saved.description is None
 
         # Confirmation shows the rounded rating right away.

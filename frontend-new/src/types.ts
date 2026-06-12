@@ -51,10 +51,14 @@ export interface ApiMovie {
   poster_url: string | null;
   imdb_rating: number | null;
   awards: string | null;
+  /** Минуты из OMDB (0 или null — длительность неизвестна, в UI скрываем). */
+  runtime?: number | null;
   is_watched: boolean;
   source: string;
   rec_source?: RecSource | null;
   rec_note?: string | null;
+  /** Ссылка на оригинал рекомендации (Reel, пост в канале). */
+  source_url?: string | null;
   in_library?: boolean;
   award?: string | null;
   award_year?: number | null;
@@ -78,6 +82,7 @@ export interface UiMovie {
   watched: boolean;
   recSource: RecSource;
   recNote: string | null;
+  sourceUrl: string | null;
   why: string | null;
   plot: string | null;
   plotRu: string | null;
@@ -104,10 +109,6 @@ function hashString(s: string): number {
 export function hueFor(m: ApiMovie): number {
   const base = m.imdb_id || String(m.id);
   return hashString(base) % 360;
-}
-
-function parseRuntime(awards: string | null): number {
-  return 110;
 }
 
 function daysBetween(iso: string): number {
@@ -137,7 +138,7 @@ export function toUiMovie(m: ApiMovie): UiMovie {
     title,
     year: m.year,
     isSeries: (m.media_type || 'movie').toLowerCase() === 'series',
-    runtime: parseRuntime(m.awards),
+    runtime: m.runtime ?? 0,
     director: m.director || '',
     cast: m.cast || [],
     genres: (m.genres || []).map((g) => g.toLowerCase()),
@@ -145,6 +146,7 @@ export function toUiMovie(m: ApiMovie): UiMovie {
     watched: m.is_watched,
     recSource: normaliseRecSource(m.rec_source, m.source),
     recNote: m.rec_note ?? null,
+    sourceUrl: m.source_url ?? null,
     why: m.description ?? null,
     plot: m.plot && m.plot !== 'N/A' ? m.plot : null,
     plotRu: m.plot_ru && m.plot_ru !== 'N/A' ? m.plot_ru : null,

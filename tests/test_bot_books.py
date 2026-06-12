@@ -155,7 +155,7 @@ async def test_handle_add_book_saves_to_library():
     saved = await db.get_user_book_by_work_key("gb:xyz", user["id"])
     assert saved is not None
     assert saved.title == "Зов Ктулху"
-    assert saved.source == "telegram"
+    assert saved.source == "personal"
 
 
 @pytest.mark.asyncio

@@ -184,6 +184,16 @@ input::placeholder {
   margin-bottom: 6px;
   word-break: break-word;
 }
+.wl-account-menu__privacy {
+  display: block;
+  padding: 8px;
+  border-radius: 8px;
+  color: var(--cream-85);
+  font-family: var(--font-body);
+  font-size: 13px;
+  text-decoration: none;
+}
+.wl-account-menu__privacy:hover { background: var(--color-wine-light); }
 .wl-account-menu__logout {
   width: 100%;
   text-align: left;

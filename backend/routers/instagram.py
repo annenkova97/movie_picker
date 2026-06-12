@@ -14,6 +14,7 @@ from backend.services.instagram_reader import (
     download_reel,
     extract_frames,
     extract_movies,
+    fetch_top_comments,
     cleanup_temp_files,
 )
 from backend.services.movie_resolver import (
@@ -57,9 +58,18 @@ async def _parse_reel_to_moviebases(
         )
 
         if not movies_info:
+            # Фолбэк: самые залайканные комментарии — под вирусными рилзами
+            # название фильма почти всегда пишут зрители.
+            comments = await run_in_threadpool(fetch_top_comments, url)
+            if comments:
+                movies_info = await run_in_threadpool(
+                    extract_movies, transcript, caption, None, False, comments,
+                )
+
+        if not movies_info:
             raise HTTPException(
                 status_code=422,
-                detail="В этом Reel не нашлось упоминаний фильмов",
+                detail="В этом Reel не нашлось упоминаний фильмов (включая комментарии)",
             )
 
         return await resolve_movies(movies_info, log_tag="instagram/parse")
@@ -118,7 +128,8 @@ async def import_from_instagram(
                 already_in_library.append(existing.title)
                 continue
             created = await db.add_movie(
-                movie_base, user_id=current_user.id, source="instagram"
+                movie_base, user_id=current_user.id, source="personal",
+                rec_source="instagram", source_url=payload.url,
             )
             added_movies.append(created)
 

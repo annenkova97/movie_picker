@@ -1,0 +1,74 @@
+# Ежедневный бэкап Postgres (Railway) → зашифрованный дамп в приватный репозиторий.
+#
+# Требуемые secrets (Settings → Secrets and variables → Actions):
+#   DATABASE_PUBLIC_URL — ПУБЛИЧНАЯ строка подключения Railway-Postgres
+#                         (Railway → Postgres → Connect → "Public Network").
+#                         Внутренний DATABASE_URL (postgres.railway.internal)
+#                         с GitHub-раннера недоступен.
+#   BACKUP_PASSPHRASE   — парольная фраза для gpg-шифрования дампа
+#                         (придумать длинную, сохранить в менеджере паролей —
+#                         без неё бэкап не расшифровать).
+#   BACKUP_REPO         — приватный репозиторий для дампов, напр.
+#                         "annenkova97/lentochka-backups" (создать заранее).
+#   BACKUP_REPO_TOKEN   — fine-grained PAT с правом Contents: Read and write
+#                         на BACKUP_REPO.
+#
+# Восстановление — см. docs/BACKUPS.md.
+
+name: db-backup
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # ежедневно в 03:00 UTC
+  workflow_dispatch: {}    # и руками из вкладки Actions
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump database (pg_dump via docker, версия клиента = версии сервера)
+        env:
+          DATABASE_PUBLIC_URL: ${{ secrets.DATABASE_PUBLIC_URL }}
+        run: |
+          if [ -z "$DATABASE_PUBLIC_URL" ]; then
+            echo "::error::DATABASE_PUBLIC_URL secret is not set"; exit 1
+          fi
+          STAMP=$(date -u +%Y-%m-%d_%H%M)
+          docker run --rm -e PGURL="$DATABASE_PUBLIC_URL" postgres:17 \
+            sh -c 'pg_dump --no-owner --no-privileges --format=custom "$PGURL"' \
+            > "lentochka_${STAMP}.dump"
+          test -s "lentochka_${STAMP}.dump" || { echo "::error::dump is empty"; exit 1; }
+          echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
+
+      - name: Encrypt dump (gpg symmetric)
+        env:
+          BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          if [ -z "$BACKUP_PASSPHRASE" ]; then
+            echo "::error::BACKUP_PASSPHRASE secret is not set"; exit 1
+          fi
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+            --passphrase "$BACKUP_PASSPHRASE" \
+            --output "lentochka_${STAMP}.dump.gpg" "lentochka_${STAMP}.dump"
+          shred -u "lentochka_${STAMP}.dump"
+
+      - name: Push to backup repo (хранится 30 последних дампов)
+        env:
+          BACKUP_REPO: ${{ secrets.BACKUP_REPO }}
+          BACKUP_REPO_TOKEN: ${{ secrets.BACKUP_REPO_TOKEN }}
+        run: |
+          if [ -z "$BACKUP_REPO" ] || [ -z "$BACKUP_REPO_TOKEN" ]; then
+            echo "::error::BACKUP_REPO / BACKUP_REPO_TOKEN secrets are not set"; exit 1
+          fi
+          git clone --depth 1 \
+            "https://x-access-token:${BACKUP_REPO_TOKEN}@github.com/${BACKUP_REPO}.git" backup-repo
+          mkdir -p backup-repo/dumps
+          cp "lentochka_${STAMP}.dump.gpg" backup-repo/dumps/
+          cd backup-repo/dumps
+          ls -1t lentochka_*.dump.gpg | tail -n +31 | xargs -r git rm -q || true
+          ls -1t lentochka_*.dump.gpg | tail -n +31 | xargs -r rm -f
+          cd ..
+          git add dumps
+          git -c user.name="backup-bot" -c user.email="backup-bot@users.noreply.github.com" \
+            commit -m "backup ${STAMP}" || echo "nothing to commit"
+          git push

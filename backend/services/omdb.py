@@ -1,3 +1,4 @@
+import re
 import time
 import httpx
 from typing import Optional
@@ -10,16 +11,26 @@ class OMDBService:
 
     # Детали фильма по IMDb ID практически не меняются — суток кэша достаточно,
     # чтобы один и тот же фильм, сохраняемый разными людьми, не бил по OMDB
-    # повторно (и не съедал дневной лимит).
+    # повторно (и не съедал дневной лимит). Поиск меняется чаще (новые релизы
+    # индексируются), но за час — нет; часовой кэш гасит повторные запросы
+    # «одно и то же название» от разных людей и ретраев.
     _BY_ID_TTL = 24 * 3600
+    _SEARCH_TTL = 3600
+    _SEARCH_CACHE_MAX = 500
 
     def __init__(self):
         self.api_key = OMDB_API_KEY
         self.base_url = OMDB_BASE_URL
         self._by_id_cache: dict[str, tuple[float, MovieBase]] = {}
+        self._search_cache: dict[str, tuple[float, list[OMDBSearchResult]]] = {}
 
     async def search_movies(self, query: str, media_type: str = "movie") -> list[OMDBSearchResult]:
-        """Поиск фильмов по названию"""
+        """Поиск фильмов по названию (с часовым кэшем)."""
+        cache_key = f"{media_type}|{query.strip().lower()}"
+        cached = self._search_cache.get(cache_key)
+        if cached and (time.monotonic() - cached[0]) < self._SEARCH_TTL:
+            return list(cached[1])
+
         params: dict = {
             "apikey": self.api_key,
             "s": query,
@@ -31,18 +42,22 @@ class OMDBService:
             response = await client.get(self.base_url, params=params)
             data = response.json()
 
-            if data.get("Response") == "False":
-                return []
-
             results = []
-            for item in data.get("Search", []):
+            # Промахи тоже кэшируем: повторный поиск несуществующего названия —
+            # самый частый источник лишних запросов к OMDB.
+            found = data.get("Search", []) if data.get("Response") != "False" else []
+            for item in found:
                 results.append(OMDBSearchResult(
                     imdb_id=item.get("imdbID", ""),
                     title=item.get("Title", ""),
                     year=item.get("Year", ""),
                     poster_url=item.get("Poster") if item.get("Poster") != "N/A" else None
                 ))
-            return results
+
+        if len(self._search_cache) >= self._SEARCH_CACHE_MAX:
+            self._search_cache.clear()  # примитивно, но кэш — только щит от лимита
+        self._search_cache[cache_key] = (time.monotonic(), results)
+        return list(results)
 
     async def get_movie_by_id(self, imdb_id: str) -> Optional[MovieBase]:
         """Получить детали фильма по IMDb ID (с кэшем на сутки).
@@ -128,6 +143,14 @@ class OMDBService:
             "series", "episode",
         ) else "movie"
 
+        # "Runtime": "148 min" → 148. Для сериалов это длительность эпизода.
+        # 0 — OMDB длительности не знает (маркер «проверено» для бэкфилла).
+        runtime = 0
+        raw_runtime = data.get("Runtime") or ""
+        runtime_match = re.search(r"(\d+)", raw_runtime)
+        if runtime_match:
+            runtime = int(runtime_match.group(1))
+
         return MovieBase(
             imdb_id=data.get("imdbID", ""),
             title=data.get("Title", ""),
@@ -140,7 +163,8 @@ class OMDBService:
             director=data.get("Director") if data.get("Director") != "N/A" else None,
             poster_url=data.get("Poster") if data.get("Poster") != "N/A" else None,
             imdb_rating=imdb_rating,
-            awards=data.get("Awards") if data.get("Awards") != "N/A" else None
+            awards=data.get("Awards") if data.get("Awards") != "N/A" else None,
+            runtime=runtime,
         )
 
 
