@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
-import re
 from backend import database as db
 from backend.auth import get_current_user
 from backend.models import (
@@ -10,11 +9,8 @@ from backend.models import (
     MovieUpdate,
     User,
 )
-from backend.services import omdb_service, llm_service
-
-
-def _has_cyrillic(text: str) -> bool:
-    return bool(re.search('[а-яА-ЯёЁ]', text))
+from backend.services import llm_service
+from backend.services.title_search import find_movie_by_query, get_movie_by_key
 
 router = APIRouter(prefix="/api/movies", tags=["movies"])
 
@@ -52,28 +48,10 @@ async def add_movie(
     """Добавить фильм в личную библиотеку по названию или IMDb ID (tt1234567)."""
     query = movie_data.query.strip()
 
-    if query.startswith("tt") and query[2:].isdigit():
-        movie_base = await omdb_service.get_movie_by_id(query)
-    else:
-        search_query = query
-        if _has_cyrillic(query):
-            try:
-                search_query = await llm_service.translate_movie_title(query)
-                print(f"Перевод запроса: '{query}' → '{search_query}'")
-            except Exception as e:
-                print(f"Ошибка перевода, используем оригинал: {e}")
-
-        # Сначала пробуем точное совпадение
-        movie_base = await omdb_service.get_movie_by_title(search_query)
-
-        # Если не нашли — нечёткий поиск, берём первый результат
-        if not movie_base:
-            print(f"Точный поиск не дал результатов, пробуем нечёткий: '{search_query}'")
-            results = await omdb_service.search_movies(search_query)
-            if results:
-                movie_base = await omdb_service.get_movie_by_id(results[0].imdb_id)
-                if movie_base:
-                    print(f"Нашли похожее: '{movie_base.title}'")
+    # Единый резолвер (tt-id / точный OMDB-match / кириллица через TMDb, включая
+    # TMDb-only тайтлы без IMDb id). Раньше тут был отдельный OMDB-only путь,
+    # который не находил русские/старые фильмы и сериалы.
+    movie_base = await find_movie_by_query(query)
 
     if not movie_base:
         raise HTTPException(
@@ -118,7 +96,7 @@ async def add_movie_by_imdb_id(
     if existing:
         return existing
 
-    movie_base = await omdb_service.get_movie_by_id(imdb_id)
+    movie_base = await get_movie_by_key(imdb_id)
     if not movie_base:
         raise HTTPException(status_code=404, detail=f"Фильм {imdb_id} не найден")
 
@@ -268,9 +246,9 @@ async def bulk_import(
             imported.append(updated or existing)
             continue
 
-        movie_base = await omdb_service.get_movie_by_id(item.imdb_id)
+        movie_base = await get_movie_by_key(item.imdb_id)
         if not movie_base:
-            print(f"[bulk-import] OMDB has no record for {item.imdb_id}, skipping")
+            print(f"[bulk-import] no record for {item.imdb_id}, skipping")
             continue
 
         if movie_base.plot:

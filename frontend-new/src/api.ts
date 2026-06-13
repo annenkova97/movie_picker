@@ -68,11 +68,13 @@ export function searchMovies(q: string): Promise<SearchResult[]> {
 }
 
 export function getMoviePreview(imdbId: string): Promise<MoviePreview> {
-  return http(`/api/search/preview/${imdbId}`);
+  // imdb_id может быть синтетическим ключом TMDb («tmdb:movie:123») с
+  // двоеточиями — кодируем, чтобы не сломать путь.
+  return http(`/api/search/preview/${encodeURIComponent(imdbId)}`);
 }
 
 export function addMovieByImdbId(imdbId: string): Promise<ApiMovie> {
-  return http(`/api/movies/by-imdb/${imdbId}`, { method: 'POST' });
+  return http(`/api/movies/by-imdb/${encodeURIComponent(imdbId)}`, { method: 'POST' });
 }
 
 export function importFromInstagram(url: string): Promise<ApiMovie[]> {

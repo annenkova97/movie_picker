@@ -51,7 +51,7 @@ def _auth(token: str) -> dict[str, str]:
 
 async def _add_movie(client, headers, imdb_id="tt0111161") -> dict:
     with patch(
-        "backend.routers.movies.omdb_service.get_movie_by_title",
+        "backend.services.title_search.omdb_service.get_movie_by_title",
         return_value=_moviebase(imdb_id),
     ):
         r = await client.post("/api/movies", json={"query": "Shawshank"}, headers=headers)

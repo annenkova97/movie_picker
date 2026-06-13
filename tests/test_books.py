@@ -223,6 +223,53 @@ async def test_brodsky_search_endpoint_returns_hits(client):
 
 
 @pytest.mark.asyncio
+async def test_search_books_reranks_best_title_on_top():
+    """Лучшее совпадение по названию всплывает над учебником/пересказом."""
+    from backend.services import book_search
+
+    hits = [
+        BookSearchResult(work_key="gb:guide", title="Краткий пересказ: Война и мир",
+                         author="Разбор", year=None, cover_url=None),
+        BookSearchResult(work_key="gb:real", title="Война и мир",
+                         author="Лев Толстой", year="1869", cover_url=None),
+    ]
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books",
+        new=AsyncMock(return_value=hits),
+    ):
+        results = await book_search.search_books("Война и мир")
+
+    assert results[0].work_key == "gb:real"  # точное название — первым
+
+
+@pytest.mark.asyncio
+async def test_search_books_intitle_fallback_when_plain_empty():
+    """Пустой обычный запрос → строгий intitle до отката на Open Library."""
+    from backend.services import book_search
+
+    calls: list[str] = []
+
+    async def _gb(q, prefer_lang=None):
+        calls.append(q)
+        if q.startswith("intitle:"):
+            return [BookSearchResult(work_key="gb:x", title="Редкая книга",
+                                     author=None, year=None, cover_url=None)]
+        return []
+
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books", new=_gb,
+    ), patch(
+        "backend.services.book_search.openlibrary_service.search_books",
+        new=AsyncMock(return_value=[]),
+    ) as ol:
+        results = await book_search.search_books("Редкая книга")
+
+    assert [r.work_key for r in results] == ["gb:x"]
+    assert any(c.startswith("intitle:") for c in calls)
+    ol.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_book_recommend_uses_library(client):
     token = await _register(client, "books_rec@example.com")
     headers = _auth(token)

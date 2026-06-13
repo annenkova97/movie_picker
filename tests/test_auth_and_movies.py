@@ -14,11 +14,11 @@ under test:
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.models.movie import MovieBase
+from backend.models.movie import MovieBase, OMDBSearchResult
 
 
 def _moviebase(imdb_id: str = "tt0111161", title: str = "The Shawshank Redemption") -> MovieBase:
@@ -110,7 +110,7 @@ async def test_add_get_delete_roundtrip(client):
 
     movie = _moviebase()
     with patch(
-        "backend.routers.movies.omdb_service.get_movie_by_title",
+        "backend.services.title_search.omdb_service.get_movie_by_title",
         return_value=movie,
     ):
         r = await client.post(
@@ -143,7 +143,7 @@ async def test_libraries_are_isolated_per_user(client):
 
     movie = _moviebase("tt0078788", "Apocalypse Now")
     with patch(
-        "backend.routers.movies.omdb_service.get_movie_by_title",
+        "backend.services.title_search.omdb_service.get_movie_by_title",
         return_value=movie,
     ):
         r = await client.post(
@@ -163,7 +163,7 @@ async def test_authed_share_snapshots_db_and_includes_owner_name(client):
 
     movie = _moviebase("tt0073195", "Jaws")
     with patch(
-        "backend.routers.movies.omdb_service.get_movie_by_title",
+        "backend.services.title_search.omdb_service.get_movie_by_title",
         return_value=movie,
     ):
         await client.post(
@@ -180,6 +180,57 @@ async def test_authed_share_snapshots_db_and_includes_owner_name(client):
     body = r.json()
     assert body["owner_name"] == "OwnerName"
     assert any(m["imdb_id"] == "tt0073195" for m in body["movies"])
+
+
+@pytest.mark.asyncio
+async def test_web_search_routes_cyrillic_through_tmdb(client):
+    """Раньше /api/search ходил только в OMDB; теперь — через TMDb-пайплайн,
+    и tmdb-only ключ (фильм без IMDb id) доходит до выдачи."""
+    hit = OMDBSearchResult(
+        imdb_id="tmdb:movie:99", title="Иди и смотри", year="1985",
+        poster_url="http://img/p.jpg",
+    )
+    with patch("backend.services.title_search.tmdb_service.api_key", new="dummy"), \
+         patch(
+             "backend.services.title_search.tmdb_service.search_any",
+             new=AsyncMock(return_value=[hit]),
+         ):
+        r = await client.get("/api/search", params={"q": "Иди и смотри"})
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body[0]["imdb_id"] == "tmdb:movie:99"
+    assert body[0]["title"] == "Иди и смотри"
+
+
+@pytest.mark.asyncio
+async def test_preview_and_add_by_tmdb_key(client):
+    """Превью и сохранение фильма по синтетическому ключу tmdb:… работают
+    end-to-end (метадата строится из TMDb, не из OMDB)."""
+    token = await _register(client, "tmdbkey@example.com", "T")
+
+    tmdb_movie = MovieBase(
+        imdb_id="tmdb:movie:99", title="Иди и смотри", original_title="Come and See",
+        year=1985, media_type="movie", genres=["Драма"], plot=None,
+        cast=["Алексей Кравченко"], director="Элем Климов", poster_url=None,
+        imdb_rating=None,
+    )
+    with patch(
+        "backend.services.title_search.tmdb_service.get_by_key",
+        new=AsyncMock(return_value=tmdb_movie),
+    ):
+        pr = await client.get("/api/search/preview/tmdb:movie:99")
+        assert pr.status_code == 200, pr.text
+        assert pr.json()["title"] == "Иди и смотри"
+
+        ar = await client.post(
+            "/api/movies/by-imdb/tmdb:movie:99", headers=_auth(token),
+        )
+    assert ar.status_code in (200, 201), ar.text
+    assert ar.json()["imdb_id"] == "tmdb:movie:99"
+
+    lr = await client.get("/api/movies?in_library=true", headers=_auth(token))
+    assert any(m["imdb_id"] == "tmdb:movie:99" for m in lr.json())
 
 
 @pytest.mark.asyncio

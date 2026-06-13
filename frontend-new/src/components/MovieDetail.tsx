@@ -118,12 +118,28 @@ export function MovieDetail({
 
           <span className="md-spacer" />
 
-          <a
-            className="md-imdb"
-            href={`https://www.imdb.com/title/${movie.imdbId}/`}
-            target="_blank"
-            rel="noreferrer noopener"
-          >↗ {T.detailImdb[lang]}</a>
+          {/* TMDb-only тайтлы (ключ «tmdb:movie|tv:id») не имеют страницы IMDb —
+              ведём на TMDb вместо битой ссылки imdb.com/title/tmdb:… */}
+          {movie.imdbId.startsWith('tmdb:')
+            ? (() => {
+                const [, kind, tid] = movie.imdbId.split(':');
+                return (
+                  <a
+                    className="md-imdb"
+                    href={`https://www.themoviedb.org/${kind}/${tid}`}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                  >↗ TMDb</a>
+                );
+              })()
+            : (
+              <a
+                className="md-imdb"
+                href={`https://www.imdb.com/title/${movie.imdbId}/`}
+                target="_blank"
+                rel="noreferrer noopener"
+              >↗ {T.detailImdb[lang]}</a>
+            )}
         </div>
 
         <style>{styles}</style>

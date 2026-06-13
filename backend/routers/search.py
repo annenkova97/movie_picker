@@ -1,14 +1,9 @@
 from fastapi import APIRouter, Query, HTTPException, Request
-import re
 from backend.models import OMDBSearchResult, MoviePreview
 from backend.rate_limit import limiter
-from backend.services import omdb_service, llm_service
+from backend.services.title_search import get_movie_by_key, search_title
 
 router = APIRouter(prefix="/api/search", tags=["search"])
-
-
-def _has_cyrillic(text: str) -> bool:
-    return bool(re.search('[а-яА-ЯёЁ]', text))
 
 
 @router.get("", response_model=list[OMDBSearchResult])
@@ -17,29 +12,24 @@ async def search_movies(
     request: Request,
     q: str = Query(..., min_length=1, description="Поисковый запрос"),
 ):
-    """Поиск фильмов в OMDB по названию. Автоматически переводит русские запросы.
+    """Поиск фильмов по названию через единый пайплайн (TMDB → OMDB → перевод).
 
-    Публичный: stateless-обёртка над OMDB, не использует user_id.
+    Раньше веб-поиск ходил только в OMDB+перевод и потому плохо находил русские
+    (особенно старые) фильмы и сериалы. Теперь идёт через ``search_title``, как
+    и бот: для кириллицы первым работает TMDb, отдавая русские названия и, при
+    необходимости, синтетические ``tmdb:`` ключи. Публичный, без user_id.
     """
-    search_q = q
-    if _has_cyrillic(q):
-        try:
-            search_q = await llm_service.translate_movie_title(q)
-            print(f"Поиск: перевод '{q}' → '{search_q}'")
-        except Exception as e:
-            print(f"Ошибка перевода при поиске, используем оригинал: {e}")
-    results = await omdb_service.search_movies(search_q)
-    return results
+    return await search_title(q)
 
 
-@router.get("/preview/{imdb_id}", response_model=MoviePreview)
+@router.get("/preview/{imdb_id:path}", response_model=MoviePreview)
 @limiter.limit("60/minute")
 async def get_movie_preview(
     request: Request,
     imdb_id: str,
 ):
-    """Получить детальный превью фильма по IMDb ID — без сохранения в БД."""
-    movie = await omdb_service.get_movie_by_id(imdb_id)
+    """Детальный превью фильма по внешнему ключу (``tt…`` или ``tmdb:…``)."""
+    movie = await get_movie_by_key(imdb_id)
     if not movie:
         raise HTTPException(status_code=404, detail="Фильм не найден")
     return MoviePreview(
