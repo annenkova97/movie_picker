@@ -22,15 +22,23 @@ async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Свободный текст: сначала пробуем OMDB как название фильма; если ничего
-    не нашлось — трактуем как запрос на рекомендацию из библиотеки.
+    """Свободный текст: пост → экстрактор, название → поиск, иначе рекомендация.
 
-    Это даёт два сценария одной строкой:
-    - «Inception» / «Бойцовский клуб» → карточки фильмов с кнопкой «Добавить».
+    Три сценария одной строкой:
+    - длинный/многострочный текст (вставленный пост) → извлекаем все фильмы
+      и книги разом (handlers.forward);
+    - «Inception» / «Бойцовский клуб» → карточки фильмов с кнопкой «Добавить»;
     - «что-то лёгкое и смешное» → AI-подбор из списка пользователя.
     """
     query = update.message.text.strip()
     if not query:
+        return
+
+    # Вставленный пост (несколько строк / длинный абзац) — не название и не
+    # запрос: гоним через общий экстрактор фильмов и книг.
+    from handlers.forward import looks_like_post, process_pasted_text
+    if looks_like_post(query):
+        await process_pasted_text(update, context)
         return
 
     results = await search_title(query)

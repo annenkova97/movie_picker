@@ -18,6 +18,8 @@ export interface SavedFilm {
   /** Italic 'why-saved' phrase that preserves the original recommendation's emotional energy. */
   italic: string;
   source: string;
+  /** Ссылка на оригинал рекомендации — источник становится тапабельным. */
+  sourceUrl?: string | null;
   streaming?: string;
   poster: {
     background: string;
@@ -203,11 +205,29 @@ function SavedFilmCard({ film, onClick }: { film: SavedFilm; onClick: () => void
         {film.award && <div className="wl-card__eyebrow">{film.award}</div>}
         <div className="wl-card__title">{film.title}</div>
         <div className="wl-card__meta">
-          {film.year} · {film.genre} · {film.runtime} · ★ {film.rating.toFixed(1)}
+          {[
+            film.year || null,
+            film.genre,
+            film.runtime || null,
+            film.rating > 0 ? `★ ${film.rating.toFixed(1)}` : null,
+          ].filter(Boolean).join(' · ')}
         </div>
         <div className="wl-card__italic">«{film.italic}»</div>
         <div className="wl-card__bottom">
-          <span className="wl-card__source">{film.source}</span>
+          {film.source && (film.sourceUrl ? (
+            <span
+              className="wl-card__source wl-card__source--link"
+              role="link"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(film.sourceUrl!, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              {film.source} ↗
+            </span>
+          ) : (
+            <span className="wl-card__source">{film.source}</span>
+          ))}
           {film.userRating ? (
             <span className="wl-card__myrating" title="моя оценка">★ {film.userRating}</span>
           ) : null}
@@ -313,6 +333,7 @@ export function AccountButton({ onSignIn }: { onSignIn: () => void }) {
       {open && (
         <div className="wl-account-menu">
           <div className="wl-account-menu__name">{user.name || user.email}</div>
+          <a className="wl-account-menu__privacy" href="/privacy">{T.privacy[lang]}</a>
           {!isTelegram && (
             <button className="wl-account-menu__logout" onClick={() => { setOpen(false); logout(); }}>
               {T.logout[lang]}
@@ -742,6 +763,12 @@ const styles = `
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.wl-card__source--link {
+  color: rgba(233, 217, 167, 0.85);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
 }
 .wl-card__myrating {
   flex: 0 0 auto;

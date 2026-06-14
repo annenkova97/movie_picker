@@ -22,7 +22,7 @@ SELECT_COLUMNS = (
     "id, imdb_id, title, original_title, year, genres, description, plot, "
     '"cast", director, poster_url, imdb_rating, awards, is_watched, source, '
     "added_at, rec_source, rec_note, in_library, award, award_year, plot_ru, "
-    "user_rating, user_note, watched_at, media_type"
+    "user_rating, user_note, watched_at, media_type, source_url, runtime"
 )
 
 BOOK_SELECT_COLUMNS = (
@@ -116,6 +116,14 @@ async def init_db() -> None:
         await conn.execute(
             "ALTER TABLE movies ADD COLUMN IF NOT EXISTS media_type TEXT DEFAULT 'movie'"
         )
+        # Ссылка на оригинал рекомендации (Reel / пост в канале).
+        await conn.execute(
+            "ALTER TABLE movies ADD COLUMN IF NOT EXISTS source_url TEXT"
+        )
+        # Длительность в минутах из OMDB (0 — OMDB не знает, NULL — не проверяли).
+        await conn.execute(
+            "ALTER TABLE movies ADD COLUMN IF NOT EXISTS runtime INTEGER"
+        )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS shared_lists (
                 id SERIAL PRIMARY KEY,
@@ -165,6 +173,94 @@ async def init_db() -> None:
         await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS user_note TEXT")
         await conn.execute("ALTER TABLE books ADD COLUMN IF NOT EXISTS read_at TIMESTAMP")
 
+        # Маркеры разовых миграций/бэкфиллов (key → value), чтобы они отрабатывали
+        # на старте один раз и не гоняли OMDB/LLM при каждом деплое.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+
+        # Разовый бэкфилл: бот раньше писал source='telegram' всему подряд.
+        # source — тип записи (personal/top100/awards), канал рекомендации живёт
+        # в rec_source. Реальный источник старых строк неизвестен → personal.
+        done = await conn.fetchval(
+            "SELECT value FROM app_meta WHERE key = 'bot_source_backfill_v1'"
+        )
+        if not done:
+            await conn.execute(
+                "UPDATE movies SET source = 'personal' WHERE source = 'telegram'"
+            )
+            await conn.execute(
+                "UPDATE books SET source = 'personal' WHERE source = 'telegram'"
+            )
+            await conn.execute(
+                "INSERT INTO app_meta (key, value) "
+                "VALUES ('bot_source_backfill_v1', 'done') "
+                "ON CONFLICT (key) DO NOTHING"
+            )
+
+
+async def meta_get(key: str) -> Optional[str]:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT value FROM app_meta WHERE key = $1", key)
+        return row[0] if row else None
+
+
+async def meta_set(key: str, value: str) -> None:
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO app_meta (key, value) VALUES ($1, $2) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            key, value,
+        )
+
+
+async def get_all_movie_imdb_ids() -> list[str]:
+    """Уникальные imdb_id по всем строкам movies (для разовых бэкфиллов)."""
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch("SELECT DISTINCT imdb_id FROM movies")
+    return [r[0] for r in rows if r[0]]
+
+
+async def set_media_type_by_imdb(imdb_id: str, media_type: str) -> int:
+    """Проставляет media_type всем строкам с этим imdb_id (тип общий для тайтла,
+    так покрываем сразу всех пользователей). Возвращает число изменённых строк."""
+    async with _pool.acquire() as conn:
+        res = await conn.execute(
+            "UPDATE movies SET media_type = $1 "
+            "WHERE imdb_id = $2 AND media_type IS DISTINCT FROM $1",
+            media_type, imdb_id,
+        )
+    return int(res.split()[-1])
+
+
+async def get_imdb_ids_missing_runtime(limit: int = 300) -> list[str]:
+    """imdb_id записей без длительности (NULL = ещё не спрашивали у OMDB).
+
+    0 означает «спрашивали, OMDB не знает» — такие не возвращаем, чтобы
+    бэкфилл не дёргал OMDB по ним на каждом старте.
+    """
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT DISTINCT imdb_id FROM movies "
+            "WHERE runtime IS NULL AND imdb_id LIKE 'tt%' LIMIT $1",
+            limit,
+        )
+    return [r[0] for r in rows if r[0]]
+
+
+async def set_runtime_by_imdb(imdb_id: str, runtime: int) -> int:
+    """Проставляет runtime всем строкам с этим imdb_id (длительность общая для
+    тайтла — покрываем сразу всех пользователей)."""
+    async with _pool.acquire() as conn:
+        res = await conn.execute(
+            "UPDATE movies SET runtime = $1 WHERE imdb_id = $2 AND runtime IS NULL",
+            runtime, imdb_id,
+        )
+    return int(res.split()[-1])
+
 
 def _row_to_movie(row) -> Movie:
     return Movie(
@@ -198,6 +294,8 @@ def _row_to_movie(row) -> Movie:
             datetime.fromisoformat(str(row[24])) if row[24] else None
         ),
         media_type=row[25] or "movie",
+        source_url=row[26],
+        runtime=row[27],
     )
 
 
@@ -410,6 +508,7 @@ async def add_movie(
     in_library: bool = True,
     award: Optional[str] = None,
     award_year: Optional[int] = None,
+    source_url: Optional[str] = None,
 ) -> Movie:
     async with _pool.acquire() as conn:
         movie_id = await conn.fetchval(
@@ -417,10 +516,11 @@ async def add_movie(
             INSERT INTO movies (
                 user_id, imdb_id, title, original_title, year, genres, description,
                 plot, "cast", director, poster_url, imdb_rating, awards, source,
-                rec_source, rec_note, in_library, award, award_year, media_type
+                rec_source, rec_note, in_library, award, award_year, media_type,
+                source_url, runtime
             ) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+                $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
             ) RETURNING id
             """,
             user_id,
@@ -443,6 +543,8 @@ async def add_movie(
             award,
             award_year,
             movie.media_type,
+            source_url,
+            movie.runtime,
         )
         row = await conn.fetchrow(
             f"SELECT {SELECT_COLUMNS} FROM movies WHERE id = $1", movie_id

@@ -88,7 +88,8 @@ async def import_from_telegram(
                 already_in_library.append(existing.title)
                 continue
             created = await db.add_movie(
-                movie_base, user_id=current_user.id, source="telegram",
+                movie_base, user_id=current_user.id, source="personal",
+                rec_source="telegram", source_url=payload.url,
             )
             added_movies.append(created)
 

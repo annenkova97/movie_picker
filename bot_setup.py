@@ -27,7 +27,7 @@ from handlers.list import list_command, watched_command
 from handlers.recommend import recommend_command, text_handler
 from handlers.callbacks import callback_handler, note_reply_handler
 from handlers.instagram import instagram_handler
-from handlers.forward import forward_handler
+from handlers.forward import forward_handler, telegram_link_handler
 
 
 def register_handlers(app: Application) -> None:
@@ -58,13 +58,20 @@ def register_handlers(app: Application) -> None:
         instagram_handler,
     ))
 
-    # Пересланные посты из TG-каналов: текст или фото → фильмы и книги.
+    # Ссылка на пост t.me текстом — читаем пост через публичный embed.
     app.add_handler(MessageHandler(
-        filters.FORWARDED & (filters.TEXT | filters.PHOTO | filters.CAPTION),
+        filters.Regex(r"https?://(www\.)?t\.me/\w+/\d+") & ~filters.FORWARDED,
+        telegram_link_handler,
+    ))
+
+    # Пересланные посты (текст/фото) И просто фото в чат → фильмы и книги.
+    app.add_handler(MessageHandler(
+        (filters.FORWARDED & (filters.TEXT | filters.PHOTO | filters.CAPTION))
+        | (filters.PHOTO & ~filters.FORWARDED),
         forward_handler,
     ))
 
-    # Свободный текст → поиск/рекомендация. Пересланные уже отработаны выше.
+    # Свободный текст → пост-экстрактор/поиск/рекомендация (см. text_handler).
     app.add_handler(MessageHandler(
         filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED,
         text_handler,

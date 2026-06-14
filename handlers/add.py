@@ -54,8 +54,9 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-    # Сохраняем
-    movie = await db.add_movie(movie_base, user_id=user_id, source="telegram")
+    # Сохраняем. Название набрано руками — источника рекомендации нет,
+    # поэтому rec_source не пишем (в приложении источник не показывается).
+    movie = await db.add_movie(movie_base, user_id=user_id, source="personal")
 
     rating = imdb_suffix(movie.imdb_rating, "  ★ ")
     year = f" ({movie.year})" if movie.year else ""

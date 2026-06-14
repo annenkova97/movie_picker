@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,9 +12,27 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from backend import config
 from backend import database as db
+
+# Sentry инициализируем до создания приложения, чтобы ловить и ошибки старта.
+# Без DSN (локалка, тесты) — полностью выключен, импорт не выполняется.
+if config.SENTRY_DSN:
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=config.SENTRY_DSN,
+        environment=config.SENTRY_ENVIRONMENT,
+        # Ошибки — все; перфоманс-трейсы не нужны на friends-бете.
+        traces_sample_rate=0.0,
+        send_default_pii=False,
+    )
+    print("[sentry] enabled", flush=True)
 from backend.rate_limit import limiter
 from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares, books, telegram_webhook
-from backend.services.awards_seed import sync_awards_catalog
+from backend.services.awards_seed import (
+    sync_awards_catalog,
+    backfill_media_type,
+    backfill_runtime,
+)
 
 
 @asynccontextmanager
@@ -35,6 +54,23 @@ async def lifespan(app: FastAPI):
             await sync_awards_catalog()
         except Exception as exc:
             print(f"Не удалось синхронизировать каталог наград: {exc}")
+
+    # Разовый бэкфилл media_type у старых записей (фильм/сериал). Гоняем в фоне,
+    # чтобы не задерживать старт и health-check; внутри гейт по app_meta — пройдёт
+    # один раз. SKIP_AWARDS_SEED=1 заодно отключает и его в тестах.
+    if os.getenv("SKIP_AWARDS_SEED") != "1":
+        async def _run_media_type_backfill():
+            try:
+                await backfill_media_type()
+            except Exception as exc:
+                print(f"[media_type] бэкфилл упал: {exc}", flush=True)
+            # Длительности — после классификации, тем же фоновым проходом.
+            try:
+                await backfill_runtime()
+            except Exception as exc:
+                print(f"[runtime] бэкфилл упал: {exc}", flush=True)
+
+        app.state.media_type_task = asyncio.create_task(_run_media_type_backfill())
 
     # Telegram-бот через webhook в этом же процессе. Включается только когда
     # заданы токен + публичный URL + секрет. Локально — пусто, бот гоняется

@@ -8,6 +8,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { GuestSignupSheet } from './components/GuestSignupSheet';
 import { ShareModal } from './components/ShareModal';
 import { SharedListView } from './components/SharedListView';
+import { PrivacyPage } from './components/PrivacyPage';
 import { TonightMoodFilters } from './components/tonight/TonightMoodFilters';
 import { TonightResults, SAMPLE_FILMS } from './components/tonight/TonightResults';
 import { WatchlistMain, SAMPLE_SAVED, SAMPLE_RECS } from './components/watchlist/WatchlistMain';
@@ -56,6 +57,10 @@ function AppShell() {
         {T.authLoading[lang]}
       </div>
     );
+  }
+
+  if (window.location.pathname.replace(/\/$/, '') === '/privacy') {
+    return <PrivacyPage />;
   }
 
   if (shareSlug) {

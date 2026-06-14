@@ -69,6 +69,65 @@ async def sync_awards_catalog() -> None:
     await backfill_plot_ru()
 
 
+async def backfill_media_type() -> None:
+    """Разово классифицирует УЖЕ сохранённые записи: спрашивает у OMDB настоящий
+    Type и проставляет media_type='series' там, где это сериал.
+
+    Нужен, потому что распознавание сериалов появилось позже, чем накопилась
+    библиотека — у старых строк media_type лежит дефолтное 'movie'. Гейтим
+    маркером в app_meta, чтобы пройтись один раз и не дёргать OMDB на каждом
+    деплое (для фильмов media_type='movie' — легитимное значение, по нему
+    «непроклассифицированные» не отличить)."""
+    if await db.meta_get("media_type_backfilled") == "1":
+        return
+
+    imdb_ids = await db.get_all_movie_imdb_ids()
+    if not imdb_ids:
+        await db.meta_set("media_type_backfilled", "1")
+        return
+
+    print(f"[media_type] классифицирую {len(imdb_ids)} тайтлов")
+    changed = 0
+    for imdb_id in imdb_ids:
+        try:
+            movie = await omdb_service.get_movie_by_id(imdb_id)
+            if movie and movie.media_type == "series":
+                changed += await db.set_media_type_by_imdb(imdb_id, "series")
+            await asyncio.sleep(0.2)  # не долбим OMDB
+        except Exception as exc:
+            print(f"[media_type] не удалось обработать {imdb_id}: {exc}")
+
+    # Ставим маркер в любом случае — разовый проход; редкие промахи (OMDB лежал)
+    # всегда можно добить руками через scripts/backfill_media_type.py.
+    await db.meta_set("media_type_backfilled", "1")
+    print(f"[media_type] сериалов проставлено: {changed}")
+
+
+async def backfill_runtime() -> None:
+    """Дозаполняет длительность у уже сохранённых записей из OMDB.
+
+    Маркер не нужен: NULL в runtime означает «не проверяли», 0 — «проверяли,
+    OMDB не знает». Каждый старт добивает до 300 непроверенных записей и
+    естественно затухает, когда NULL-ов не остаётся.
+    """
+    imdb_ids = await db.get_imdb_ids_missing_runtime(limit=300)
+    if not imdb_ids:
+        return
+
+    print(f"[runtime] дозаполняю длительность: {len(imdb_ids)} тайтлов")
+    filled = 0
+    for imdb_id in imdb_ids:
+        try:
+            movie = await omdb_service.get_movie_by_id(imdb_id)
+            # 0 пишем тоже — это маркер «проверено, данных нет».
+            runtime = movie.runtime if movie and movie.runtime is not None else 0
+            filled += await db.set_runtime_by_imdb(imdb_id, runtime)
+            await asyncio.sleep(0.2)  # не долбим OMDB
+        except Exception as exc:
+            print(f"[runtime] не удалось обработать {imdb_id}: {exc}")
+    print(f"[runtime] заполнено строк: {filled}")
+
+
 async def backfill_plot_ru() -> None:
     """Переводит plot на русский для всех фильмов, где plot_ru ещё пуст."""
     movies = await db.get_movies_missing_plot_ru()
