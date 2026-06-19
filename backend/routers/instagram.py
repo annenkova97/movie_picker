@@ -11,11 +11,7 @@ from backend.rate_limit import limiter, user_or_ip_key
 from backend.services.instagram_reader import (
     InstagramReaderError,
     validate_url,
-    download_reel,
-    extract_frames,
-    extract_movies,
-    fetch_top_comments,
-    cleanup_temp_files,
+    parse_reel_movies,
 )
 from backend.services.movie_resolver import (
     resolve_movies,
@@ -39,43 +35,20 @@ async def _parse_reel_to_moviebases(
     """
     url = validate_url(payload.url)
 
-    # Apify-actor отдаёт сразу caption + готовый transcript + видео в их KVS,
-    # так что отдельный Whisper и аудио-экстракция здесь не нужны.
-    video_path, caption, transcript = await run_in_threadpool(download_reel, url)
+    # Caption-first лесенка с кэшем: подпись → транскрипт без видео →
+    # комментарии → (только при vision) кадры. Тратит Apify-кредиты ступенчато
+    # и останавливается на первом найденном фильме.
+    movies_info, _caption, _transcript = await run_in_threadpool(
+        parse_reel_movies, url, vision=payload.vision,
+    )
 
-    frame_paths: list[str] = []
-    # Кадры нужны только для vision-режима, и только если видео реально скачали.
-    if payload.vision and video_path:
-        frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
-
-    try:
-        movies_info = await run_in_threadpool(
-            extract_movies,
-            transcript,
-            caption,
-            frame_paths if payload.vision else None,
-            payload.vision,
+    if not movies_info:
+        raise HTTPException(
+            status_code=422,
+            detail="В этом Reel не нашлось упоминаний фильмов (включая комментарии)",
         )
 
-        if not movies_info:
-            # Фолбэк: самые залайканные комментарии — под вирусными рилзами
-            # название фильма почти всегда пишут зрители.
-            comments = await run_in_threadpool(fetch_top_comments, url)
-            if comments:
-                movies_info = await run_in_threadpool(
-                    extract_movies, transcript, caption, None, False, comments,
-                )
-
-        if not movies_info:
-            raise HTTPException(
-                status_code=422,
-                detail="В этом Reel не нашлось упоминаний фильмов (включая комментарии)",
-            )
-
-        return await resolve_movies(movies_info, log_tag="instagram/parse")
-    finally:
-        if frame_paths:
-            cleanup_temp_files(frame_paths)
+    return await resolve_movies(movies_info, log_tag="instagram/parse")
 
 
 @router.post("/parse", response_model=list[MovieBase])
@@ -166,31 +139,14 @@ async def search_from_instagram(
         url = validate_url(payload.url)
         print(f"[instagram/search] url: {url}")
 
-        video_path, caption, transcript = await run_in_threadpool(download_reel, url)
+        movies_info, caption, transcript = await run_in_threadpool(
+            parse_reel_movies, url, vision=payload.vision,
+        )
         print(
-            f"[instagram/search] step: apify OK "
-            f"(video={'yes' if video_path else 'no'}, "
-            f"transcript={'yes' if transcript else 'no'})"
+            f"[instagram/search] step: parse OK "
+            f"(transcript={'yes' if transcript else 'no'}, "
+            f"caption={'yes' if caption else 'no'}) → {len(movies_info)} movies"
         )
-
-        frame_paths: list[str] = []
-
-        if payload.vision and video_path:
-            frame_paths = await run_in_threadpool(extract_frames, video_path, 3)
-            print(f"[instagram/search] step: extract_frames OK")
-
-        print(f"[instagram/search] transcript: {transcript[:200]}")
-        print(f"[instagram/search] caption: {caption[:200] if caption else '(empty)'}")
-
-        movies_info = await run_in_threadpool(
-            extract_movies,
-            transcript,
-            caption,
-            frame_paths if payload.vision else None,
-            payload.vision,
-        )
-        print(f"[instagram/search] step: extract_movies OK → {len(movies_info)} movies")
-        print(f"[instagram/search] extracted: {movies_info}")
 
         results: list[OMDBSearchResult] = []
         seen_ids: set[str] = set()
@@ -213,6 +169,3 @@ async def search_from_instagram(
     except Exception as exc:
         print(f"[instagram/search] ERROR (unexpected): {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
-    finally:
-        if 'frame_paths' in locals() and frame_paths:
-            cleanup_temp_files(frame_paths)
