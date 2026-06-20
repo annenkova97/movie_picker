@@ -45,7 +45,7 @@ function previewToUiMovie(p: MoviePreview): UiMovie {
  * single detail+save surface is used everywhere.
  */
 export function SearchSheet({ onClose }: Props) {
-  const { lang } = useSettings();
+  const { lang, region } = useSettings();
   const lib = useLibrary();
   const [q, setQ] = useState('');
   const [results, setResults] = useState<SearchResult[] | null>(null);
@@ -148,6 +148,7 @@ export function SearchSheet({ onClose }: Props) {
 
       <MovieDetail
         lang={lang}
+        region={region}
         movie={selected}
         saving={saving}
         onClose={() => setSelected(null)}

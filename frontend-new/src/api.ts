@@ -67,6 +67,65 @@ export function searchMovies(q: string): Promise<SearchResult[]> {
   return http(`/api/search?q=${encodeURIComponent(q)}`);
 }
 
+// ── Availability (where to watch) ───────────────────────────────────────────
+
+export interface Provider {
+  provider_id: number;
+  name: string;
+  logo_url: string | null;
+}
+
+export interface WatchAvailability {
+  region: string;
+  link: string | null;
+  flatrate: Provider[];
+  rent: Provider[];
+  buy: Provider[];
+}
+
+/** Where a title can be watched in `region` (subscription/rent/buy). */
+export function getAvailability(imdbId: string, region: string): Promise<WatchAvailability> {
+  return http(
+    `/api/availability/${encodeURIComponent(imdbId)}?region=${encodeURIComponent(region)}`,
+  );
+}
+
+// ── User settings (region + streaming services) ─────────────────────────────
+
+export interface UserSettings {
+  region: string;
+  streaming_services: number[];
+}
+
+export function patchSettings(body: Partial<UserSettings>): Promise<UserSettings> {
+  return http('/api/settings', { method: 'PATCH', body: JSON.stringify(body) });
+}
+
+// ── Analytics events ────────────────────────────────────────────────────────
+
+export interface EventPayload {
+  name: string;
+  props?: Record<string, unknown>;
+  anon_id?: string | null;
+}
+
+/**
+ * Fire-and-forget event batch. Deliberately does NOT go through `http()` — a
+ * 401 here must not trigger logout, and a failure must never surface. Uses
+ * `keepalive` so a flush on pagehide still reaches the server.
+ */
+export async function sendEvents(events: EventPayload[]): Promise<void> {
+  const token = getToken();
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  await fetch('/api/events', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ events }),
+    keepalive: true,
+  });
+}
+
 export function getMoviePreview(imdbId: string): Promise<MoviePreview> {
   // imdb_id может быть синтетическим ключом TMDb («tmdb:movie:123») с
   // двоеточиями — кодируем, чтобы не сломать путь.
@@ -154,6 +213,17 @@ export function deleteMovie(id: number): Promise<void> {
 export interface RecommendResult {
   movies: ApiMovie[];
   explanation: string;
+  /** Where each returned film can be watched — keyed by String(movie.id). */
+  availability: Record<string, WatchAvailability>;
+}
+
+export interface RecommendOpts {
+  /** TMDb country code; enables availability badges on the result. */
+  region?: string | null;
+  /** User's streaming provider ids — used for the "only available" filter. */
+  services?: number[] | null;
+  /** Keep only films available on the user's services (with a safe fallback). */
+  onlyAvailable?: boolean;
 }
 
 /**
@@ -161,12 +231,14 @@ export interface RecommendResult {
  *
  * If `library` is provided, it is sent inline and the backend uses it as
  * context (no auth required — used in guest mode). Otherwise the backend
- * pulls the authenticated user's library from the DB.
+ * pulls the authenticated user's library from the DB. `opts` carries the
+ * availability preferences (region / services / only-available filter).
  */
 export function recommend(
   query: string,
   includeWatched = false,
   library?: ApiMovie[],
+  opts?: RecommendOpts,
 ): Promise<RecommendResult> {
   return http('/api/recommend', {
     method: 'POST',
@@ -174,6 +246,9 @@ export function recommend(
       query,
       include_watched: includeWatched,
       ...(library !== undefined ? { library } : {}),
+      ...(opts?.region ? { region: opts.region } : {}),
+      ...(opts?.services && opts.services.length ? { services: opts.services } : {}),
+      ...(opts?.onlyAvailable ? { only_available: true } : {}),
     }),
   });
 }

@@ -93,7 +93,7 @@ function PreviewPanel({ th, lang, imdbId, onSaveWatch, onSaveWatched, onClose, s
 
           {/* Info */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 700, fontSize: 15, color: th.ink, lineHeight: 1.25, marginBottom: 4 }}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: th.ink, lineHeight: 1.25, marginBottom: 4 }}>
               {preview.title} {preview.year ? <span style={{ fontWeight: 400, color: th.ink3 }}>({preview.year})</span> : null}
             </div>
 
@@ -393,7 +393,7 @@ export function QuickAdd({ th, lang, onAdd, loading = false, error }: Props) {
                     />
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 600, fontSize: 14, color: th.ink, lineHeight: 1.2 }}>
+                    <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 14, color: th.ink, lineHeight: 1.2 }}>
                       {r.title}
                     </div>
                     <div style={{ fontSize: 11, color: th.ink3, fontFamily: 'ui-monospace,monospace', marginTop: 2 }}>

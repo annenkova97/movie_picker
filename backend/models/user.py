@@ -50,3 +50,20 @@ class TelegramWidgetLogin(BaseModel):
 class AuthResponse(BaseModel):
     token: str
     user: User
+
+
+class UserSettings(BaseModel):
+    """Пользовательские настройки доступности (регион + стриминговые сервисы).
+
+    ``region`` — двухбуквенный код страны для TMDb watch-providers (RU/US/…).
+    ``streaming_services`` — id провайдеров TMDb, на которые подписан юзер;
+    пустой список = «фильтра нет, показывать всё».
+    """
+    region: str = "RU"
+    streaming_services: list[int] = []
+
+
+class UserSettingsUpdate(BaseModel):
+    """Частичное обновление настроек: задаётся только то, что меняем."""
+    region: Optional[str] = Field(None, min_length=2, max_length=2)
+    streaming_services: Optional[list[int]] = None

@@ -54,7 +54,7 @@ export function Home(props: Props) {
             {dateLabel} · {savedCount} {T.saved[lang]}
           </div>
           <div style={{
-            fontFamily: "'Fraunces', 'Playfair Display', Georgia, serif",
+            fontFamily: "var(--font-display)",
             fontWeight: 400, fontStyle: 'italic',
             fontSize: 22, lineHeight: 1.15, letterSpacing: -0.4,
             color: th.ink,
@@ -72,7 +72,7 @@ export function Home(props: Props) {
         <QuickAdd th={th} lang={lang} onAdd={onAdd} loading={adding} error={addError} />
 
         <h1 style={{
-          fontFamily: "'Fraunces', 'Playfair Display', Georgia, serif",
+          fontFamily: "var(--font-display)",
           fontWeight: 700, fontStyle: 'normal',
           fontSize: 32, lineHeight: 1.05, letterSpacing: -0.8,
           margin: '10px 0 0', color: th.ink,
@@ -170,7 +170,7 @@ export function Home(props: Props) {
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 700, fontSize: 20, color: th.ink, letterSpacing: -0.3 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, color: th.ink, letterSpacing: -0.3 }}>
                 {T.pickMoodTitle[lang]}
               </div>
               <button onClick={() => !picking && setMoodOpen(false)} aria-label="close" style={{
@@ -197,7 +197,7 @@ function Tab({ label, count, active, onClick, th }: { label: string; count: numb
       border: 'none', background: 'transparent', cursor: 'pointer',
       padding: '14px 6px', marginRight: 20, position: 'relative',
       color: active ? th.ink : th.ink3, fontSize: 15, fontWeight: 600,
-      fontFamily: "'Fraunces', serif", letterSpacing: -0.2,
+      fontFamily: "var(--font-display)", letterSpacing: -0.2,
       display: 'flex', alignItems: 'baseline', gap: 8,
     }}>
       {label}
@@ -219,7 +219,7 @@ function Shelves({ th, lang, shelves, onClick }: { th: Theme; lang: Lang; shelve
                 {String(idx + 1).padStart(2, '0')}
               </span>
               <h2 style={{
-                margin: 0, fontFamily: "'Fraunces', serif",
+                margin: 0, fontFamily: "var(--font-display)",
                 fontWeight: hero ? 700 : 600, fontSize: hero ? 28 : 20,
                 color: th.ink, letterSpacing: -0.4, lineHeight: 1,
               }}>{s.title}</h2>
@@ -260,7 +260,7 @@ function PosterCard({ m, th, lang, hero, w, h, onClick }: { m: UiMovie; th: Them
       <TypoPoster movie={m} lang={lang} w={w} h={h} />
       {hero && (
         <div style={{ paddingLeft: 2 }}>
-          <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 600, fontSize: 13.5, color: th.ink, lineHeight: 1.15 } as React.CSSProperties}>{m.title}</div>
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 13.5, color: th.ink, lineHeight: 1.15 } as React.CSSProperties}>{m.title}</div>
           <div style={{ fontSize: 10.5, color: th.ink3, marginTop: 2, fontFamily: 'ui-monospace,monospace' }}>{src[m.recSource]} · {m.runtime}{lang === 'ru' ? '' : "'"}</div>
         </div>
       )}
@@ -280,7 +280,7 @@ function Empty({ th, lang }: { th: Theme; lang: Lang }) {
             ✦ {T.emptyKicker[lang]}
           </div>
           <h2 style={{
-            margin: 0, fontFamily: "'Fraunces',serif", fontStyle: 'italic',
+            margin: 0, fontFamily: "var(--font-display)", fontStyle: 'italic',
             fontSize: 30, lineHeight: 1.05, color: th.ink, letterSpacing: -0.6,
           } as React.CSSProperties}>{T.emptyTitle[lang]}</h2>
           <p style={{ fontSize: 14, color: th.ink2, lineHeight: 1.5, margin: '12px 0 0', maxWidth: 520 }}>{T.emptySub[lang]}</p>
@@ -318,7 +318,7 @@ function WatchedCard({ m, th, lang, onToggle }: { m: UiMovie; th: Theme; lang: L
     }}>
       <TypoPoster movie={m} lang={lang} w={140} h={210} />
       <div style={{ flex: 1 }}>
-        <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 700, fontSize: 13.5, color: th.ink, lineHeight: 1.2 }}>{m.title}</div>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 13.5, color: th.ink, lineHeight: 1.2 }}>{m.title}</div>
         <div style={{ fontSize: 11, color: th.ink3, marginTop: 2, fontFamily: 'ui-monospace,monospace' }}>
           {[m.year, m.director].filter(Boolean).join(' · ')}
         </div>
@@ -352,7 +352,7 @@ function FriendView({ th, lang, movies }: { th: Theme; lang: Lang; movies: UiMov
           }}>
             <TypoPoster movie={m} lang={lang} w={60} h={90} />
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 700, fontSize: 16, color: th.ink, lineHeight: 1.1 }}>{m.title}</div>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: th.ink, lineHeight: 1.1 }}>{m.title}</div>
               <div style={{ fontSize: 11.5, color: th.ink3, marginTop: 3, fontFamily: 'ui-monospace,monospace' }}>{[m.year, m.director].filter(Boolean).join(' · ')}</div>
               {m.why && <div style={{ fontSize: 12, color: th.ink2, marginTop: 6, fontStyle: 'italic', lineHeight: 1.35 }}>«{m.why}»</div>}
             </div>

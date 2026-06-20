@@ -138,7 +138,7 @@ export function AuthScreen({ th, lang, initialMode = 'login', onClose }: Props) 
             </svg>
           </div>
           <div>
-            <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontWeight: 700, fontSize: 20, letterSpacing: -0.3 }}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 20, letterSpacing: -0.3 }}>
               {mode === 'login' ? T.authTitleLogin[lang] : T.authTitleRegister[lang]}
             </div>
             <div style={{ fontSize: 12, color: th.ink3, marginTop: 3 }}>{T.authSubtitle[lang]}</div>

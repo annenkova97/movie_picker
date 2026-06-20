@@ -44,7 +44,7 @@ export function PickReveal({ th, lang, movie, mood, explanation, onClose, onAgai
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
           <TypoPoster movie={movie} lang={lang} w={140} h={210} />
           <div style={{ flex: 1, minWidth: 0, paddingTop: 4 }}>
-            <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 24, color: th.ink, lineHeight: 1.05 } as React.CSSProperties}>{movie.title}</div>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 24, color: th.ink, lineHeight: 1.05 } as React.CSSProperties}>{movie.title}</div>
             <div style={{ fontSize: 13, color: th.ink3, marginTop: 6 }}>{[movie.director, movie.year, `${movie.runtime} ${T.min[lang]}`].filter(Boolean).join(' · ')}</div>
             {(explanation || movie.why) && (
               <div style={{ marginTop: 14, padding: '12px 14px', background: th.bgAlt, borderRadius: 10, border: `1px solid ${th.line}` }}>

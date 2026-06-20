@@ -15,6 +15,7 @@ import { WatchlistMain, SAMPLE_SAVED, SAMPLE_RECS } from './components/watchlist
 import { WatchlistEmpty } from './components/watchlist/WatchlistEmpty';
 import { LentochkaApp } from './LentochkaApp';
 import { SettingsProvider, useSettings } from './settings';
+import { track } from './analytics';
 import type { Lang } from './i18n';
 import { T } from './i18n';
 import { THEMES, type Theme } from './theme';
@@ -167,11 +168,16 @@ function AppInner({ th, lang }: AppInnerProps) {
   const [shareOpen, setShareOpen] = useState(false);
   const guestPrompt = useGuestSignupPrompt(uiMovies.length, lib.isGuest);
 
+  // One app_open per load — the backbone signal for return/retention metrics.
+  useEffect(() => {
+    track('app_open');
+  }, []);
+
   return (
     <>
       <LentochkaApp
         onOpenAuth={() => setAuthMode('login')}
-        onOpenShare={() => setShareOpen(true)}
+        onOpenShare={() => { track('share_opened'); setShareOpen(true); }}
       />
 
       {guestPrompt.open && (

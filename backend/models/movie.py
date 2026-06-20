@@ -41,6 +41,27 @@ class Movie(MovieBase):
     added_at: datetime
 
 
+class Provider(BaseModel):
+    """Один стриминговый провайдер из данных TMDb/JustWatch."""
+    provider_id: int
+    name: str
+    logo_url: Optional[str] = None
+
+
+class WatchAvailability(BaseModel):
+    """Где тайтл доступен в конкретном регионе (нормализованный вид TMDb).
+
+    ``flatrate`` — по подписке (Netflix и т.п.), ``rent``/``buy`` — аренда/покупка.
+    Это единый формат: его отдаёт ``tmdb_service.get_watch_providers``, кэширует
+    БД, возвращает ``/api/availability`` и подмешивает ``/api/recommend``.
+    """
+    region: str
+    link: Optional[str] = None  # deep-link на JustWatch-страницу тайтла
+    flatrate: list[Provider] = []
+    rent: list[Provider] = []
+    buy: list[Provider] = []
+
+
 class MovieCreate(BaseModel):
     """Модель для добавления фильма по названию или IMDb ID"""
     query: str  # Название или IMDb ID (tt1234567)
@@ -67,6 +88,12 @@ class RecommendationRequest(BaseModel):
     query: str  # "что-то лёгкое", "драма", "с Камбербэтчем"
     include_watched: bool = False
     library: Optional[list[Movie]] = None
+    # Доступность: регион и id стриминговых сервисов пользователя. Для
+    # залогиненного по умолчанию берутся из настроек; гость передаёт сам.
+    # only_available=True — оставить в выдаче только то, что есть на его сервисах.
+    region: Optional[str] = None
+    services: Optional[list[int]] = None
+    only_available: bool = False
 
 
 class BulkImportItem(BaseModel):
@@ -86,6 +113,10 @@ class RecommendationResponse(BaseModel):
     """Ответ с рекомендациями"""
     movies: list[Movie]
     explanation: str  # Почему эти фильмы подходят
+    # Доступность для рекомендованных фильмов: str(movie.id) → где смотреть.
+    # Заполняется только для возвращённых фильмов, чтобы карточка показала
+    # бейджи провайдеров без второго запроса. Пусто, если регион не задан.
+    availability: dict[str, WatchAvailability] = {}
 
 
 class OMDBSearchResult(BaseModel):

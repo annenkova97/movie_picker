@@ -9,6 +9,8 @@ from backend.models.movie import (
     MoviePreview,
     BulkImportItem,
     BulkImportRequest,
+    Provider,
+    WatchAvailability,
 )
 from backend.models.book import (
     Book,
@@ -33,7 +35,10 @@ from backend.models.user import (
     TelegramWebAppLogin,
     TelegramWidgetLogin,
     AuthResponse,
+    UserSettings,
+    UserSettingsUpdate,
 )
+from backend.models.event import EventIn, EventBatch, ALLOWED_EVENTS
 
 __all__ = [
     "Movie",
@@ -56,6 +61,8 @@ __all__ = [
     "MoviePreview",
     "BulkImportItem",
     "BulkImportRequest",
+    "Provider",
+    "WatchAvailability",
     "InstagramImportRequest",
     "TelegramImportRequest",
     "SharedListCreateRequest",
@@ -67,4 +74,9 @@ __all__ = [
     "TelegramWebAppLogin",
     "TelegramWidgetLogin",
     "AuthResponse",
+    "UserSettings",
+    "UserSettingsUpdate",
+    "EventIn",
+    "EventBatch",
+    "ALLOWED_EVENTS",
 ]

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { track } from '../../analytics';
 
 interface FilterGroup {
   key: string;
@@ -6,11 +7,21 @@ interface FilterGroup {
   options: string[];
 }
 
+export interface MoodSubmitPayload {
+  text: string;
+  genre: string | null;
+  duration: string | null;
+  era: string | null;
+  onlyAvailable: boolean;
+}
+
 interface Props {
   open: boolean;
   loading?: boolean;
+  /** Whether the user has configured any streaming services (toggle is useless without). */
+  hasServices?: boolean;
   onClose: () => void;
-  onSubmit: (payload: { text: string; genre: string | null; duration: string | null; era: string | null }) => void;
+  onSubmit: (payload: MoodSubmitPayload) => void;
 }
 
 const SUGGESTIONS = ['поплакать', 'классика', 'с друзьями', 'романтичный вечер', 'что-то странное'];
@@ -35,11 +46,12 @@ const FILTER_GROUPS: FilterGroup[] = [
 
 const PLACEHOLDER = 'лёгкое, ламповое, под пиццу...';
 
-export function TonightMoodFilters({ open, loading = false, onClose, onSubmit }: Props) {
+export function TonightMoodFilters({ open, loading = false, hasServices = false, onClose, onSubmit }: Props) {
   const [text, setText] = useState('');
   const [genre, setGenre] = useState<string>('Любой');
   const [duration, setDuration] = useState<string>('Любой');
   const [era, setEra] = useState<string>('Любой');
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
 
   // Lock body scroll while modal open
   useEffect(() => {
@@ -66,6 +78,14 @@ export function TonightMoodFilters({ open, loading = false, onClose, onSubmit }:
       genre: genre === 'Любой' ? null : genre,
       duration: duration === 'Любой' ? null : duration,
       era: era === 'Любой' ? null : era,
+      onlyAvailable: onlyAvailable && hasServices,
+    });
+  };
+
+  const toggleOnlyAvailable = () => {
+    setOnlyAvailable((v) => {
+      track('availability_filter_used', { on: !v });
+      return !v;
     });
   };
 
@@ -111,6 +131,12 @@ export function TonightMoodFilters({ open, loading = false, onClose, onSubmit }:
             </button>
           ))}
         </div>
+
+        <AvailabilityToggle
+          on={onlyAvailable}
+          hasServices={hasServices}
+          onToggle={toggleOnlyAvailable}
+        />
 
         <div className="lt-divider" />
 
@@ -195,6 +221,35 @@ function FilterSection({
         })}
       </div>
     </section>
+  );
+}
+
+function AvailabilityToggle({
+  on, hasServices, onToggle,
+}: {
+  on: boolean;
+  hasServices: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="lt-avail" style={{ marginTop: 28 }}>
+      <button
+        type="button"
+        className={`lt-avail__switch${on && hasServices ? ' is-on' : ''}`}
+        onClick={onToggle}
+        disabled={!hasServices}
+        role="switch"
+        aria-checked={on && hasServices}
+      >
+        <span className="lt-avail__knob" />
+      </button>
+      <div className="lt-avail__text">
+        <span className="lt-avail__label">Только доступное на моих сервисах</span>
+        {!hasServices && (
+          <span className="lt-avail__hint">Добавь сервисы в ⚙ настройках</span>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -408,6 +463,51 @@ const styles = `
   font-weight: 600;
 }
 .lt-chip--filter.is-active:hover { background: var(--color-cream); }
+
+.lt-avail {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.lt-avail__switch {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 28px;
+  border-radius: 14px;
+  border: 1px solid var(--wine-light-border);
+  background: var(--color-wine);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.lt-avail__switch.is-on {
+  background: var(--color-gold);
+  border-color: var(--color-gold);
+}
+.lt-avail__switch:disabled { opacity: 0.5; cursor: not-allowed; }
+.lt-avail__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-cream);
+  transition: transform 0.15s ease;
+}
+.lt-avail__switch.is-on .lt-avail__knob { transform: translateX(18px); }
+.lt-avail__text { display: flex; flex-direction: column; gap: 2px; }
+.lt-avail__label {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--color-cream);
+}
+.lt-avail__hint {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: rgba(233, 217, 167, 0.55);
+}
 
 .lt-divider {
   height: 1px;

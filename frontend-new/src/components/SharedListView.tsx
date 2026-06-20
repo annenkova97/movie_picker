@@ -67,7 +67,7 @@ export function SharedListView({ th, lang, slug }: Props) {
 
         {!loading && loadError && (
           <div>
-            <h1 style={{ fontFamily: "'Fraunces',serif", fontSize: 28, color: th.ink }}>
+            <h1 style={{ fontFamily: "var(--font-display)", fontSize: 28, color: th.ink }}>
               {T.sharedNotFound[lang]}
             </h1>
             <a
@@ -94,7 +94,7 @@ export function SharedListView({ th, lang, slug }: Props) {
               {T.sharedSavedDate[lang]} {new Date(data.created_at).toLocaleDateString()}
             </div>
             <h1 style={{
-              margin: '0 0 8px', fontFamily: "'Fraunces',serif",
+              margin: '0 0 8px', fontFamily: "var(--font-display)",
               fontSize: 32, fontWeight: 700, color: th.ink, fontStyle: 'italic',
             }}>{data.name}</h1>
             <div style={{ fontSize: 13, color: th.ink3, marginBottom: 24, fontFamily: 'ui-monospace,monospace' }}>
@@ -171,7 +171,7 @@ function SharedMovieCard({ m, th }: { m: ApiMovie; th: Theme }) {
       )}
       <div style={{ padding: '10px 12px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
         <div style={{
-          fontFamily: "'Fraunces',serif", fontWeight: 600, fontSize: 15,
+          fontFamily: "var(--font-display)", fontWeight: 600, fontSize: 15,
           color: th.ink, lineHeight: 1.25,
         }}>{m.title}</div>
         <div style={{ fontSize: 11, color: th.ink3, fontFamily: 'ui-monospace,monospace' }}>

@@ -72,6 +72,12 @@ async def init_db() -> None:
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)"
         )
+        # Настройки доступности: регион (TMDb country code) и id стриминговых
+        # сервисов. NULL region → читаем как 'RU'; '[]' → фильтра нет.
+        await conn.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS region TEXT")
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS streaming_services TEXT DEFAULT '[]'"
+        )
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS movies (
                 id SERIAL PRIMARY KEY,
@@ -182,6 +188,35 @@ async def init_db() -> None:
             )
         """)
 
+        # Кэш доступности (watch-providers TMDb/JustWatch) — per-тайтл+регион,
+        # НЕ per-user. fetched_at — для TTL: протухшие перезапрашиваем.
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS watch_providers (
+                imdb_id    TEXT NOT NULL,
+                region     TEXT NOT NULL,
+                payload    TEXT NOT NULL,
+                fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (imdb_id, region)
+            )
+        """)
+
+        # Событийная аналитика (лёгкий self-hosted трекинг для kill-метрик).
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                id      SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                anon_id TEXT,
+                name    TEXT NOT NULL,
+                props   TEXT DEFAULT '{}',
+                source  TEXT DEFAULT 'web',
+                ts      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_events_name_ts ON events(name, ts)"
+        )
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id)")
+
         # Разовый бэкфилл: бот раньше писал source='telegram' всему подряд.
         # source — тип записи (personal/top100/awards), канал рекомендации живёт
         # в rec_source. Реальный источник старых строк неизвестен → personal.
@@ -214,6 +249,109 @@ async def meta_set(key: str, value: str) -> None:
             "INSERT INTO app_meta (key, value) VALUES ($1, $2) "
             "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
             key, value,
+        )
+
+
+# ── user settings ────────────────────────────────────────────────────────────
+
+
+async def get_user_settings(user_id: int) -> dict:
+    """Настройки доступности: {'region': str, 'streaming_services': list[int]}.
+
+    NULL region → 'RU'; пустой список → «фильтра нет»; нет юзера → дефолты."""
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT region, streaming_services FROM users WHERE id = $1",
+            user_id,
+        )
+    if not row:
+        return {"region": "RU", "streaming_services": []}
+    return {
+        "region": row[0] or "RU",
+        "streaming_services": json.loads(row[1]) if row[1] else [],
+    }
+
+
+async def update_user_settings(
+    user_id: int,
+    region: Optional[str] = None,
+    streaming_services: Optional[list[int]] = None,
+) -> dict:
+    """Частичное обновление настроек. Возвращает актуальное состояние."""
+    sets: list[str] = []
+    params: list = []
+    if region is not None:
+        params.append(region)
+        sets.append(f"region = ${len(params)}")
+    if streaming_services is not None:
+        params.append(json.dumps(streaming_services))
+        sets.append(f"streaming_services = ${len(params)}")
+    if sets:
+        params.append(user_id)
+        async with _pool.acquire() as conn:
+            await conn.execute(
+                f"UPDATE users SET {', '.join(sets)} WHERE id = ${len(params)}",
+                *params,
+            )
+    return await get_user_settings(user_id)
+
+
+# ── watch providers cache ─────────────────────────────────────────────────────
+
+
+async def get_watch_providers_cache(
+    imdb_id: str, region: str
+) -> Optional[tuple[dict, datetime]]:
+    """Кэш доступности (payload, fetched_at) или None. TTL решает вызывающий."""
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT payload, fetched_at FROM watch_providers "
+            "WHERE imdb_id = $1 AND region = $2",
+            imdb_id, region,
+        )
+    if not row or not row[0]:
+        return None
+    fetched_at = row[1] if isinstance(row[1], datetime) else datetime.utcnow()
+    return json.loads(row[0]), fetched_at
+
+
+async def upsert_watch_providers_cache(
+    imdb_id: str, region: str, payload: dict
+) -> None:
+    """Записать/обновить кэш доступности, проставив свежий fetched_at."""
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            "INSERT INTO watch_providers (imdb_id, region, payload, fetched_at) "
+            "VALUES ($1, $2, $3, $4) "
+            "ON CONFLICT (imdb_id, region) DO UPDATE SET "
+            "payload = EXCLUDED.payload, fetched_at = EXCLUDED.fetched_at",
+            imdb_id, region, json.dumps(payload), datetime.utcnow(),
+        )
+
+
+# ── analytics events ─────────────────────────────────────────────────────────
+
+
+async def insert_events(rows: list[dict]) -> None:
+    """Батч-вставка событий. ts ставит сервер (UTC). Best-effort."""
+    if not rows:
+        return
+    now = datetime.utcnow()
+    async with _pool.acquire() as conn:
+        await conn.executemany(
+            "INSERT INTO events (user_id, anon_id, name, props, source, ts) "
+            "VALUES ($1, $2, $3, $4, $5, $6)",
+            [
+                (
+                    r.get("user_id"),
+                    r.get("anon_id"),
+                    r["name"],
+                    json.dumps(r.get("props") or {}),
+                    r.get("source") or "web",
+                    now,
+                )
+                for r in rows
+            ],
         )
 
 

@@ -1,6 +1,6 @@
 /* ============================================================
    Lentochka — Design Tokens
-   Wine + Cream + Gold palette, Fraunces + Inter typography.
+   Wine + Cream + Gold palette, Playfair Display + Manrope typography.
    Drop-in CSS custom properties for any framework.
 
    See design/DESIGN.md for full specification.
@@ -46,8 +46,8 @@
   --cream-50: rgba(233, 217, 167, 0.50);
 
   /* ----- Typography: Family ----- */
-  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+  --font-body: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', Monaco, Consolas, monospace;
 
   /* ----- Typography: Sizes ----- */
@@ -73,9 +73,9 @@
   --leading-body: 22px;
 
   /* ----- Typography: Letter spacing ----- */
-  --tracking-display: -2px;
-  --tracking-h1: -1.5px;
-  --tracking-h2: -0.5px;
+  --tracking-display: -1px;
+  --tracking-h1: -0.8px;
+  --tracking-h2: -0.3px;
   --tracking-eyebrow: 2.8px;
   --tracking-eyebrow-tight: 2px;
   --tracking-award: 1px;
