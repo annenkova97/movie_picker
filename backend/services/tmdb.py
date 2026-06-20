@@ -44,6 +44,7 @@ from backend.services.text_match import extract_year, title_score
 _MAX_SEARCH_RESULTS = 10
 _MAX_CAST = 10
 _TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w500"
+_TMDB_LOGO_BASE = "https://image.tmdb.org/t/p/original"
 _TMDB_KEY_PREFIX = "tmdb:"
 
 # Movie и TV отличаются именами полей и тем, откуда брать imdb_id. Держим эти
@@ -253,6 +254,96 @@ class TMDBService:
             data = resp.json() or {}
 
         return self._parse_details(kind, key, data, cfg)
+
+    async def resolve_tmdb_ref(self, key: str) -> Optional[tuple[str, str]]:
+        """``(media_type, tmdb_id)`` для ключа фильма.
+
+        Синтетический ключ ``tmdb:movie|tv:<id>`` разбираем напрямую; реальный
+        IMDb id (``tt…``) резолвим через ``/find`` (external_source=imdb_id).
+        None, если TMDb выключен / формат чужой / в ``/find`` ничего не нашлось.
+        """
+        parsed = parse_tmdb_key(key)
+        if parsed:
+            return parsed
+        if not self.enabled or not key or not key.startswith("tt"):
+            return None
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.get(
+                    f"{self.base_url}/find/{key}",
+                    params={"api_key": self.api_key, "external_source": "imdb_id"},
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                print(f"[tmdb] find failed for {key}: {exc}")
+                return None
+            data = resp.json() or {}
+        # Фильм приоритетнее сериала, если вдруг IMDb id оказался в обоих.
+        for kind, results_key in (("movie", "movie_results"), ("tv", "tv_results")):
+            results = data.get(results_key) or []
+            if results and results[0].get("id"):
+                return kind, str(results[0]["id"])
+        return None
+
+    @staticmethod
+    def _normalize_providers(items: Optional[list[dict]]) -> list[dict]:
+        """TMDb-список провайдеров → наш формат ``{provider_id, name, logo_url}``.
+
+        Сортируем по ``display_priority`` (TMDb так ранжирует «главные» сервисы),
+        нормализуем логотип в полный URL. Нормализация — в одном месте."""
+        out: list[dict] = []
+        for p in sorted(items or [], key=lambda x: x.get("display_priority", 999)):
+            pid = p.get("provider_id")
+            name = p.get("provider_name")
+            if pid is None or not name:
+                continue
+            logo = p.get("logo_path")
+            out.append({
+                "provider_id": pid,
+                "name": name,
+                "logo_url": f"{_TMDB_LOGO_BASE}{logo}" if logo else None,
+            })
+        return out
+
+    async def get_watch_providers(self, key: str, region: str) -> Optional[dict]:
+        """Где тайтл доступен в ``region`` (нормализованный watch-providers TMDb).
+
+        Возвращает ``{region, link, flatrate[], rent[], buy[]}``. Если HTTP-запрос
+        прошёл, но региона в данных нет — отдаём пустые списки (это валидный
+        «проверено, ничего нет», его тоже кэшируем). None только при выключенном
+        TMDb, нерезолвимом ключе или сетевой ошибке.
+        """
+        if not self.enabled:
+            return None
+        ref = await self.resolve_tmdb_ref(key)
+        if not ref:
+            return None
+        kind, tmdb_id = ref
+        region = (region or "").upper()
+        path = (
+            "/movie/{id}/watch/providers" if kind == "movie"
+            else "/tv/{id}/watch/providers"
+        )
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            try:
+                resp = await client.get(
+                    f"{self.base_url}{path.format(id=tmdb_id)}",
+                    params={"api_key": self.api_key},
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                print(f"[tmdb] watch providers fetch failed for {key}: {exc}")
+                return None
+            data = resp.json() or {}
+
+        entry = (data.get("results") or {}).get(region) or {}
+        return {
+            "region": region,
+            "link": entry.get("link"),
+            "flatrate": self._normalize_providers(entry.get("flatrate")),
+            "rent": self._normalize_providers(entry.get("rent")),
+            "buy": self._normalize_providers(entry.get("buy")),
+        }
 
     @staticmethod
     def _parse_details(kind: str, key: str, data: dict, cfg: dict) -> Optional[MovieBase]:

@@ -27,7 +27,7 @@ if config.SENTRY_DSN:
     )
     print("[sentry] enabled", flush=True)
 from backend.rate_limit import limiter
-from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares, books, telegram_webhook
+from backend.routers import movies, search, recommend, instagram, awards, auth, health, telegram, shares, books, telegram_webhook, availability, settings as settings_router, events
 from backend.services.awards_seed import (
     sync_awards_catalog,
     backfill_media_type,
@@ -140,6 +140,9 @@ app.include_router(awards.router)
 app.include_router(shares.router)
 app.include_router(books.router)
 app.include_router(telegram_webhook.router)
+app.include_router(availability.router)
+app.include_router(settings_router.router)
+app.include_router(events.router)
 app.include_router(health.router)
 
 # Статические файлы frontend (собранный Vite-бандл)

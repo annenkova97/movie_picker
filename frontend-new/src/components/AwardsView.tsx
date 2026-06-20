@@ -96,7 +96,7 @@ function AwardCard({ m, th, lang, saving, onSave, onOpen }: { m: UiMovie; th: Th
         <div style={{ fontSize: 9.5, fontFamily: 'ui-monospace,monospace', color: th.ink3, textTransform: 'uppercase', letterSpacing: 0.6 }}>
           {m.award}{m.awardYear ? ` · ${m.awardYear}` : ''}
         </div>
-        <div style={{ fontFamily: "'Fraunces',serif", fontWeight: 700, fontSize: 15, color: th.ink, lineHeight: 1.15, marginTop: 3 }}>{m.title}</div>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: th.ink, lineHeight: 1.15, marginTop: 3 }}>{m.title}</div>
         <div style={{ fontSize: 11.5, color: th.ink3, marginTop: 2, fontFamily: 'ui-monospace,monospace' }}>{[m.director, m.year].filter(Boolean).join(' · ')}</div>
       </div>
       {alreadySaved ? (

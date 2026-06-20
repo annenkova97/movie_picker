@@ -49,7 +49,7 @@ export function GuestSignupSheet({ th, lang, onCreate, onSignIn, onSkip }: Props
             <div style={{ fontSize: 11, fontFamily: 'ui-monospace,monospace', color: th.ink3, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 6 }}>
               ✦ {T.appName[lang]}
             </div>
-            <div style={{ fontFamily: "'Fraunces', serif", fontWeight: 700, fontSize: 22, color: th.ink, letterSpacing: -0.3, lineHeight: 1.15 }}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 22, color: th.ink, letterSpacing: -0.3, lineHeight: 1.15 }}>
               {T.guestSheetTitle[lang]}
             </div>
             <div style={{ fontSize: 13.5, color: th.ink2, lineHeight: 1.45, marginTop: 8 }}>

@@ -62,6 +62,10 @@ async def _ensure_users_table(db: aiosqlite.Connection) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id) "
         "WHERE telegram_id IS NOT NULL"
     )
+    # Настройки доступности: регион (TMDb country code) и id стриминговых
+    # сервисов пользователя. NULL region → читаем как 'RU'; '[]' → фильтра нет.
+    await _ensure_column(db, "users", "region", "TEXT")
+    await _ensure_column(db, "users", "streaming_services", "TEXT DEFAULT '[]'")
 
 
 async def _migrate_movies_add_user_id(db: aiosqlite.Connection) -> None:
@@ -239,6 +243,35 @@ async def init_db():
                 value TEXT
             )
         """)
+
+        # Кэш доступности (watch-providers TMDb/JustWatch) — per-тайтл+регион,
+        # НЕ per-user (movies хранятся по пользователю, доступность общая для
+        # тайтла). fetched_at — для TTL: протухшие перезапрашиваем.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS watch_providers (
+                imdb_id    TEXT NOT NULL,
+                region     TEXT NOT NULL,
+                payload    TEXT NOT NULL,
+                fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (imdb_id, region)
+            )
+        """)
+
+        # Событийная аналитика (лёгкий self-hosted трекинг для kill-метрик).
+        # user_id nullable: гость пишется по anon_id, бот — по своему user_id.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                anon_id TEXT,
+                name    TEXT NOT NULL,
+                props   TEXT DEFAULT '{}',
+                source  TEXT DEFAULT 'web',
+                ts      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_name_ts ON events(name, ts)")
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id)")
 
         await _backfill_bot_source(db)
 
@@ -427,6 +460,117 @@ async def meta_set(key: str, value: str) -> None:
             "INSERT INTO app_meta (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             (key, value),
+        )
+        await db.commit()
+
+
+# ----- user settings -------------------------------------------------------
+
+
+async def get_user_settings(user_id: int) -> dict:
+    """Настройки доступности юзера: {'region': str, 'streaming_services': list[int]}.
+
+    NULL region → 'RU' (дефолт для текущего владельца); пустой список сервисов
+    означает «фильтра нет». Несуществующий юзер → дефолты (не падаем)."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT region, streaming_services FROM users WHERE id = ?",
+            (user_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return {"region": "RU", "streaming_services": []}
+    return {
+        "region": row[0] or "RU",
+        "streaming_services": json.loads(row[1]) if row[1] else [],
+    }
+
+
+async def update_user_settings(
+    user_id: int,
+    region: Optional[str] = None,
+    streaming_services: Optional[list[int]] = None,
+) -> dict:
+    """Частичное обновление настроек. Возвращает актуальное состояние."""
+    sets: list[str] = []
+    params: list = []
+    if region is not None:
+        sets.append("region = ?")
+        params.append(region)
+    if streaming_services is not None:
+        sets.append("streaming_services = ?")
+        params.append(json.dumps(streaming_services))
+    if sets:
+        params.append(user_id)
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            await db.execute(
+                f"UPDATE users SET {', '.join(sets)} WHERE id = ?", params
+            )
+            await db.commit()
+    return await get_user_settings(user_id)
+
+
+# ----- watch providers cache -----------------------------------------------
+
+
+async def get_watch_providers_cache(
+    imdb_id: str, region: str
+) -> Optional[tuple[dict, datetime]]:
+    """Кэш доступности (payload, fetched_at) или None. TTL решает вызывающий."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT payload, fetched_at FROM watch_providers "
+            "WHERE imdb_id = ? AND region = ?",
+            (imdb_id, region),
+        ) as cur:
+            row = await cur.fetchone()
+    if not row or not row[0]:
+        return None
+    fetched_at = datetime.fromisoformat(row[1]) if row[1] else datetime.utcnow()
+    return json.loads(row[0]), fetched_at
+
+
+async def upsert_watch_providers_cache(
+    imdb_id: str, region: str, payload: dict
+) -> None:
+    """Записать/обновить кэш доступности, проставив свежий fetched_at."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "INSERT INTO watch_providers (imdb_id, region, payload, fetched_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(imdb_id, region) DO UPDATE SET "
+            "payload = excluded.payload, fetched_at = excluded.fetched_at",
+            (imdb_id, region, json.dumps(payload), datetime.utcnow().isoformat()),
+        )
+        await db.commit()
+
+
+# ----- analytics events ----------------------------------------------------
+
+
+async def insert_events(rows: list[dict]) -> None:
+    """Батч-вставка событий. ts ставит сервер (UTC), не доверяя часам клиента.
+
+    Best-effort: вызывающий оборачивает в try/except — аналитика не должна
+    ронять основной поток."""
+    if not rows:
+        return
+    now = datetime.utcnow().isoformat()
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.executemany(
+            "INSERT INTO events (user_id, anon_id, name, props, source, ts) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            [
+                (
+                    r.get("user_id"),
+                    r.get("anon_id"),
+                    r["name"],
+                    json.dumps(r.get("props") or {}),
+                    r.get("source") or "web",
+                    now,
+                )
+                for r in rows
+            ],
         )
         await db.commit()
 

@@ -1,11 +1,17 @@
+import { useEffect } from 'react';
 import type { Lang } from '../i18n';
 import { T } from '../i18n';
 import type { UiMovie } from '../types';
 import { TypoPoster } from './TypoPoster';
 import { DiaryEditor, type DiaryInput } from './DiaryEditor';
+import { ProviderBadges } from './ProviderBadges';
+import { useAvailability } from '../hooks/useAvailability';
+import { track } from '../analytics';
 
 interface Props {
   lang: Lang;
+  /** Streaming region for the "where to watch" lookup. */
+  region: string;
   movie: UiMovie | null;
   saving: boolean;
   onClose: () => void;
@@ -24,9 +30,21 @@ interface Props {
  * `movie` prop being non-null.
  */
 export function MovieDetail({
-  lang, movie, saving, onClose, onSaveToWatch, onSaveAsWatched, onToggleWatched, onRemove,
+  lang, region, movie, saving, onClose, onSaveToWatch, onSaveAsWatched, onToggleWatched, onRemove,
   onSaveDiary,
 }: Props) {
+  // Hooks must run unconditionally — fetch availability lazily for the open film.
+  const availability = useAvailability(movie?.imdbId, region, !!movie);
+  useEffect(() => {
+    const flat = availability.data?.flatrate ?? [];
+    if (flat.length > 0) {
+      track('availability_viewed', {
+        imdb_id: movie?.imdbId,
+        providers: flat.map((p) => p.name),
+      });
+    }
+  }, [availability.data, movie?.imdbId]);
+
   if (!movie) return null;
 
   const meta = [
@@ -75,6 +93,18 @@ export function MovieDetail({
               {plot
                 ? <div className="md-plot">{plot}</div>
                 : <div className="md-plot md-plot--empty">{T.detailNoPlot[lang]}</div>}
+            </Section>
+
+            <Section title={lang === 'ru' ? 'Где смотреть' : 'Where to watch'}>
+              {availability.data && availability.data.flatrate.length > 0 ? (
+                <ProviderBadges availability={availability.data} />
+              ) : (
+                <div className="md-plot md-plot--empty">
+                  {availability.isLoading
+                    ? '…'
+                    : (lang === 'ru' ? 'Пока не нашли по подписке' : 'No subscription match')}
+                </div>
+              )}
             </Section>
 
             {movie.cast.length > 0 && (

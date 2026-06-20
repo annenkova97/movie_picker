@@ -247,28 +247,73 @@ def _is_error_item(item: dict) -> bool:
     )
 
 
-def _call_apify_reel(url: str) -> dict:
-    """Основной актор: instagram-reel-scraper (caption + готовый transcript +
-    видео в своём KVS). Бросает ``InstagramReaderError``, если рилс недоступен —
-    тогда вызывающий откатится на общий скрапер."""
-    item = _run_apify_actor(
-        APIFY_INSTAGRAM_ACTOR,
-        {
-            # У этого актора поле называется "username", но принимает и URL-ы рилзов.
-            "username": [url],
-            "resultsLimit": 1,
-            # Apify сам прогонит аудио через свой транскрайбер — Whisper не нужен.
-            "includeTranscript": True,
-            # Видео сохранится в KeyValueStore этого run'а; ссылка прилетит в поле
-            # downloadedVideo, доступна по нашему APIFY_TOKEN (Instagram CDN мимо).
-            "includeDownloadedVideo": True,
-        },
-        label="reel-scraper",
-    )
+def _fetch_reel_text(url: str) -> tuple[str, str]:
+    """reel-scraper ради готового транскрипта — БЕЗ скачивания видео.
+
+    Видео ($0.02/МБ у этого актора) для извлечения названий не нужно, а
+    транскрипт ($0.048 за начатую минуту) — дорогая ступень, поэтому её
+    дёргаем только когда в подписи названия не нашлось. Возвращает
+    ``(caption, transcript)``; ('', '') — на любой сбой или error-запись,
+    это лишь одна ступень лесенки и ронять весь разбор она не должна.
+    """
+    try:
+        item = _run_apify_actor(
+            APIFY_INSTAGRAM_ACTOR,
+            {
+                # У этого актора поле называется "username", но принимает URL-ы рилзов.
+                "username": [url],
+                "resultsLimit": 1,
+                # Apify сам прогонит аудио через свой транскрайбер — Whisper не нужен.
+                "includeTranscript": True,
+                # Видео НЕ качаем: для названий оно не нужно, а это главный расход.
+                "includeDownloadedVideo": False,
+            },
+            label="reel-scraper-text",
+        )
+    except InstagramReaderError as exc:
+        print(f"[instagram_reader] reel-scraper text failed: {exc}")
+        return "", ""
     if _is_error_item(item):
-        detail = item.get("errorDescription") or item.get("error")
-        raise InstagramReaderError(f"reel-scraper не отдал данные: {detail}")
-    return item
+        return "", ""
+    return item.get("caption") or "", item.get("transcript") or ""
+
+
+def _fetch_reel_video(url: str) -> str | None:
+    """reel-scraper со скачиванием видео — только для vision-режима.
+
+    Самая дорогая ступень ($0.02/МБ), поэтому вызывается последней и лишь
+    когда явно запросили ``vision``. Качаем из Apify KeyValueStore (их IP,
+    наш токен), а не с Instagram CDN — работает и с датацентровых IP.
+    Возвращает путь к локальному .mp4 или ``None``.
+    """
+    try:
+        item = _run_apify_actor(
+            APIFY_INSTAGRAM_ACTOR,
+            {
+                "username": [url],
+                "resultsLimit": 1,
+                "includeTranscript": False,
+                "includeDownloadedVideo": True,
+            },
+            label="reel-scraper-video",
+        )
+    except InstagramReaderError as exc:
+        print(f"[instagram_reader] reel-scraper video failed: {exc}")
+        return None
+    if _is_error_item(item):
+        return None
+
+    apify_video_url = item.get("downloadedVideo")
+    if not apify_video_url:
+        return None
+    short = item.get("shortCode") or _shortcode_from_url(url)
+    dest = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
+    try:
+        _download_from_apify_kvs(apify_video_url, dest)
+        return str(dest)
+    except InstagramReaderError as exc:
+        print(f"[instagram_reader] Apify KVS download failed: {exc}")
+        return None
 
 
 def _caption_via_general_scraper(url: str) -> str:
@@ -304,8 +349,8 @@ def fetch_top_comments(url: str, *, max_comments: int = 10) -> str:
 
     Фолбэк на случай, когда из озвучки и подписи название фильма не вытащить:
     под вирусными рилзами кто-то почти всегда пишет, что это за фильм, и такие
-    комментарии собирают лайки. Возвращает '' на любую ошибку — фолбэк не
-    должен ронять основной разбор.
+    комментарии собирают лайки. Возвращает '' на любую ошибку — это лишь одна
+    ступень лесенки ``parse_reel_movies`` и ронять весь разбор она не должна.
     """
     try:
         items = _run_apify_actor_items(
@@ -400,64 +445,121 @@ def _download_from_apify_kvs(kvs_url: str, dest_path: Path) -> None:
         raise InstagramReaderError(f"Не удалось скачать видео из Apify KVS: {exc}") from exc
 
 
-def download_reel(url: str) -> tuple[str | None, str, str]:
-    """Парсит Reel через Apify-actor instagram-reel-scraper.
+# ── Кэш разбора по shortcode ──────────────────────────────────────────────────
+# Один и тот же рилс (особенно вирусный) присылают многократно — разными
+# людьми или повторно. Контент рилза неизменен, разбор детерминирован, так что
+# платить Apify за него повторно незачем. Держим результат сутки, с грубым
+# вытеснением самого старого при переполнении.
+PARSE_CACHE_TTL_SECONDS = 24 * 3600
+PARSE_CACHE_MAX_ENTRIES = 512
+_ParseResult = tuple[list["MovieInfo"], str, str]
+_parse_cache: dict[str, tuple[float, _ParseResult]] = {}
 
-    Возвращает ``(video_path_or_None, caption, transcript)``.
 
-    - ``caption`` — текст поста, обычно есть.
-    - ``transcript`` — готовая текстовая расшифровка аудио, делает сам Apify.
-      Whisper больше не вызывается.
-    - ``video_path`` — путь к локально сохранённому .mp4. Качаем из
-      Apify KeyValueStore (их IP, наш токен), а не с Instagram CDN —
-      поэтому работает и с датацентровых IP типа Railway.
-      Если по какой-то причине KVS не отдал — возвращаем ``None``,
-      transcript+caption всё равно достаточно для extract_movies.
+def _parse_cache_get(shortcode: str) -> _ParseResult | None:
+    entry = _parse_cache.get(shortcode)
+    if entry is None:
+        return None
+    ts, value = entry
+    if time.time() - ts > PARSE_CACHE_TTL_SECONDS:
+        _parse_cache.pop(shortcode, None)
+        return None
+    return value
 
-    Двухступенчатая стратегия: основной reel-scraper, а если он не открыл рилс
-    (часть ссылок он отдаёт как «Empty or private data»), откатываемся на общий
-    instagram-scraper ради caption. Если оба пустые — бросаем понятную ошибку,
-    а не делаем вид, что в посте просто нет фильмов.
+
+def _parse_cache_put(shortcode: str, value: _ParseResult) -> _ParseResult:
+    if shortcode not in _parse_cache and len(_parse_cache) >= PARSE_CACHE_MAX_ENTRIES:
+        oldest = min(_parse_cache, key=lambda k: _parse_cache[k][0])
+        _parse_cache.pop(oldest, None)
+    _parse_cache[shortcode] = (time.time(), value)
+    return value
+
+
+def clear_parse_cache() -> None:
+    """Сбросить кэш разбора (используется в тестах)."""
+    _parse_cache.clear()
+
+
+def parse_reel_movies(
+    url: str, *, vision: bool = False
+) -> tuple[list[MovieInfo], str, str]:
+    """Извлекает фильмы из Reel по caption-first лесенке. Главная точка входа.
+
+    Возвращает ``(movies, caption, transcript)``. Тратим Apify-кредиты
+    ступенчато, от дешёвого к дорогому, и останавливаемся на первом найденном
+    фильме — потому что у рилзов-рекомендаций название почти всегда уже в
+    подписи, и тогда ни видео, ни транскрипт, ни комментарии не нужны:
+
+      1. подпись через общий instagram-scraper — без видео и транскрипта;
+      2. транскрипт через reel-scraper, но БЕЗ скачивания видео — только если
+         в подписи названия не нашлось;
+      3. топ-комментарии — если и в озвучке названия нет (под вирусными рилзами
+         фильм почти всегда называют зрители);
+      4. кадры видео (vision) — только при ``vision=True`` и только если до сюда
+         ничего не нашли.
+
+    Результат кэшируется по shortcode (``PARSE_CACHE_TTL_SECONDS``), так что
+    повторный разбор того же рилза не стоит ничего. Бросает
+    ``InstagramReaderError``, если рилс вообще не открылся — ни подписи, ни
+    озвучки, — а не делает вид, что в посте просто нет фильмов.
     """
     _ensure_apify_token()
 
-    caption = ""
+    shortcode = _shortcode_from_url(url)
+    cached = _parse_cache_get(shortcode)
+    if cached is not None:
+        print(f"[instagram_reader] parse cache hit for {shortcode}")
+        return cached
+
+    # 1. Дешёвая подпись — общий scraper, без видео и транскрипта.
+    general_caption = _caption_via_general_scraper(url)
+    caption = general_caption
     transcript = ""
-    video_path: str | None = None
+    movies = extract_movies("", caption) if caption.strip() else []
+    if movies:
+        return _parse_cache_put(shortcode, (movies, caption, transcript))
 
-    # 1. Основной актор: caption + transcript + видео в KVS.
-    try:
-        item = _call_apify_reel(url)
-    except InstagramReaderError as exc:
-        print(f"[instagram_reader] reel-scraper unavailable, falling back: {exc}")
-        item = None
+    # 2. Транскрипт — reel-scraper БЕЗ скачивания видео.
+    rs_caption, transcript = _fetch_reel_text(url)
+    if not caption.strip():
+        caption = rs_caption
 
-    if item is not None:
-        caption = item.get("caption") or ""
-        transcript = item.get("transcript") or ""
-
-        apify_video_url = item.get("downloadedVideo")
-        if apify_video_url:
-            short = item.get("shortCode") or _shortcode_from_url(url)
-            dest = Path(INSTAGRAM_VIDEO_DIR) / f"{short}.mp4"
-            try:
-                _download_from_apify_kvs(apify_video_url, dest)
-                video_path = str(dest)
-            except InstagramReaderError as exc:
-                print(f"[instagram_reader] Apify KVS download failed: {exc}")
-
-    # 2. Фолбэк: общий скрапер за caption, если основной не дал ни текста.
     if not caption.strip() and not transcript.strip():
-        caption = _caption_via_general_scraper(url)
-
-    # 3. Совсем пусто — честно говорим, что рилс не открылся.
-    if not caption.strip() and not transcript.strip():
+        # Ни подписи, ни озвучки — рилс не открылся. Не кэшируем: сбой может
+        # быть транзитивным (Apify «Empty or private»), пусть ретраят.
         raise InstagramReaderError(
             "Не удалось открыть этот Reel — возможно, он приватный или "
             "недоступен. Попробуй другую ссылку."
         )
 
-    return video_path, caption, transcript
+    # Перезапускаем извлечение только если появился новый текст: транскрипт
+    # либо подпись от reel-scraper (когда у общего её не было). Иначе это был
+    # бы повторный LLM-вызов по тем же данным.
+    if transcript.strip() or (not general_caption.strip() and caption.strip()):
+        movies = extract_movies(transcript, caption)
+        if movies:
+            return _parse_cache_put(shortcode, (movies, caption, transcript))
+
+    # 3. Комментарии — под вирусными рилзами название часто пишут зрители.
+    comments = fetch_top_comments(url)
+    if comments:
+        movies = extract_movies(transcript, caption, comments=comments)
+        if movies:
+            return _parse_cache_put(shortcode, (movies, caption, transcript))
+
+    # 4. Vision по кадрам — только если явно попросили (бэкенд, payload.vision).
+    if vision:
+        video_path = _fetch_reel_video(url)
+        if video_path:
+            frames = extract_frames(video_path, 3)
+            try:
+                movies = extract_movies(transcript, caption, frames, True, comments)
+            finally:
+                cleanup_temp_files(frames)
+
+    # Рилс открылся, но фильма не нашли — результат детерминирован, кэшируем,
+    # чтобы повторная присылка того же рилза не стоила ничего.
+    return _parse_cache_put(shortcode, (movies, caption, transcript))
 
 
 def extract_audio(video_path: str) -> str:

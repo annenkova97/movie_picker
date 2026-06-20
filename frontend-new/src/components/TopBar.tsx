@@ -70,7 +70,7 @@ export function TopBar({ th, lang, setLang, theme, setTheme, onSignInClick }: Pr
           </svg>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: "'Fraunces', Georgia, serif", fontWeight: 700, fontSize: compact ? 15 : 19, color: th.ink, letterSpacing: -0.3, whiteSpace: 'nowrap' }}>
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: compact ? 15 : 19, color: th.ink, letterSpacing: -0.3, whiteSpace: 'nowrap' }}>
             {T.appName[lang]}
           </div>
         </div>

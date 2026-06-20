@@ -9,10 +9,7 @@ from telegram.ext import ContextTypes
 from backend.services.instagram_reader import (
     InstagramReaderError,
     validate_url,
-    download_reel,
-    extract_movies,
-    fetch_top_comments,
-    cleanup_temp_files,
+    parse_reel_movies,
 )
 from backend.services.omdb import omdb_service
 from backend.services.llm import llm_service
@@ -52,32 +49,14 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Разбираю Reel — это до минуты."
     )
 
-    frame_paths: list[str] = []
-
     try:
         loop = asyncio.get_event_loop()
 
-        # Apify даёт сразу caption + transcript; видео нам в боте не нужно
-        # (vision-режим не используется).
-        _video_path, caption, transcript = await loop.run_in_executor(
-            None, download_reel, url,
+        # Caption-first лесенка: подпись → (если пусто) транскрипт без видео →
+        # (если пусто) комментарии. Видео в боте не нужно — vision не зовём.
+        movies_info, _caption, _transcript = await loop.run_in_executor(
+            None, parse_reel_movies, url,
         )
-
-        movies_info = await loop.run_in_executor(
-            None, extract_movies, transcript, caption, None, False,
-        )
-
-        if not movies_info:
-            # Из озвучки и подписи не понятно — смотрим самые залайканные
-            # комментарии: под вирусными рилзами название почти всегда там.
-            await status_msg.edit_text(
-                "В тексте название не нашла — смотрю комментарии..."
-            )
-            comments = await loop.run_in_executor(None, fetch_top_comments, url)
-            if comments:
-                movies_info = await loop.run_in_executor(
-                    None, extract_movies, transcript, caption, None, False, comments,
-                )
 
         if not movies_info:
             await status_msg.edit_text(
@@ -195,9 +174,6 @@ async def instagram_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"[instagram_handler] ERROR: {tb}", flush=True)
         error_text = f"Не получилось: {type(exc).__name__}: {exc}"
         await status_msg.edit_text(error_text[:4000])
-    finally:
-        if frame_paths:
-            cleanup_temp_files(frame_paths)
 
 
 async def _send_card(message, poster_url, caption: str, keyboard) -> None:

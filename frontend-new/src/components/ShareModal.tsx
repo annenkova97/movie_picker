@@ -140,7 +140,7 @@ export function ShareModal({ th, lang, ownerName, isGuest, library, onClose }: P
       >
         {stage === 'name' && (
           <>
-            <h2 style={{ margin: '0 0 12px', fontFamily: "'Fraunces',serif", fontSize: 22, color: th.ink }}>
+            <h2 style={{ margin: '0 0 12px', fontFamily: "var(--font-display)", fontSize: 22, color: th.ink }}>
               {T.shareGuestNamePrompt[lang]}
             </h2>
             <input
@@ -171,7 +171,7 @@ export function ShareModal({ th, lang, ownerName, isGuest, library, onClose }: P
 
         {stage === 'compose' && (
           <>
-            <h2 style={{ margin: '0 0 6px', fontFamily: "'Fraunces',serif", fontSize: 22, color: th.ink }}>
+            <h2 style={{ margin: '0 0 6px', fontFamily: "var(--font-display)", fontSize: 22, color: th.ink }}>
               {T.shareTitle[lang]}
             </h2>
             <div style={{ fontSize: 12, color: th.ink3, marginBottom: 16, fontFamily: 'ui-monospace,monospace' }}>
@@ -210,7 +210,7 @@ export function ShareModal({ th, lang, ownerName, isGuest, library, onClose }: P
 
         {stage === 'done' && resultUrl && (
           <>
-            <h2 style={{ margin: '0 0 16px', fontFamily: "'Fraunces',serif", fontSize: 22, color: th.ink }}>
+            <h2 style={{ margin: '0 0 16px', fontFamily: "var(--font-display)", fontSize: 22, color: th.ink }}>
               {copied ? T.shareCopied[lang] : T.shareTitle[lang]}
             </h2>
             <div style={{

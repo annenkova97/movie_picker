@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSettings } from '../../settings';
 import { useAuth } from '../../auth';
 import { T, type Lang } from '../../i18n';
+import { StreamingSettings } from '../StreamingSettings';
 
 export interface SavedFilm {
   id: string;
@@ -68,6 +69,7 @@ export function WatchlistMain({
 }: Props) {
   const { lang, setLang } = useSettings();
   const [filter, setFilter] = useState<Filter>('all');
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const seriesCount = films.filter((f) => f.isSeries).length;
   const counts = {
@@ -95,9 +97,18 @@ export function WatchlistMain({
           <button className="wl-iconbtn" onClick={onOpenSearch} aria-label={T.searchAria[lang]}>
             <SearchIcon />
           </button>
+          <button
+            className="wl-iconbtn"
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Сервисы и регион"
+          >
+            <GearIcon />
+          </button>
           <AccountButton onSignIn={onOpenAuth} />
         </div>
       </header>
+
+      {settingsOpen && <StreamingSettings onClose={() => setSettingsOpen(false)} />}
 
       <section className="wl-tonight-cta">
         <button className="wl-tonight-cta__btn" onClick={onOpenTonight}>
@@ -292,6 +303,20 @@ export function SearchIcon() {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6" />
       <path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.6" />
+      <path
+        d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5 5l2.1 2.1M16.9 16.9 19 19M19 5l-2.1 2.1M7.1 16.9 5 19"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
