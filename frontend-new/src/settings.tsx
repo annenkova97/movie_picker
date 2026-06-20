@@ -3,6 +3,23 @@ import type { ReactNode } from 'react';
 import type { Lang } from './i18n';
 
 const LANG_KEY = 'lentochka.lang';
+const REGION_KEY = 'lentochka.region';
+const SERVICES_KEY = 'lentochka.services';
+
+// Default streaming region. The owner is in Russia; non-RU users can switch in
+// the settings sheet. (TMDb country code.)
+const DEFAULT_REGION = 'RU';
+
+function readServices(): number[] {
+  try {
+    const raw = localStorage.getItem(SERVICES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x): x is number => typeof x === 'number') : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Device language → default UI language.
@@ -30,6 +47,12 @@ export function detectDefaultLang(): Lang {
 interface SettingsState {
   lang: Lang;
   setLang: (l: Lang) => void;
+  /** Streaming region (TMDb country code) for availability lookups. */
+  region: string;
+  setRegion: (r: string) => void;
+  /** TMDb provider ids the user is subscribed to (for the availability filter). */
+  services: number[];
+  setServices: (s: number[]) => void;
 }
 
 const SettingsContext = createContext<SettingsState | null>(null);
@@ -48,6 +71,8 @@ function readStored<T extends string>(key: string, fallback: T): T {
  */
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [lang, setLang] = useState<Lang>(() => readStored<Lang>(LANG_KEY, detectDefaultLang()));
+  const [region, setRegion] = useState<string>(() => readStored(REGION_KEY, DEFAULT_REGION));
+  const [services, setServices] = useState<number[]>(() => readServices());
 
   useEffect(() => {
     try {
@@ -55,7 +80,19 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, [lang]);
 
-  const value: SettingsState = { lang, setLang };
+  useEffect(() => {
+    try {
+      localStorage.setItem(REGION_KEY, region);
+    } catch {}
+  }, [region]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SERVICES_KEY, JSON.stringify(services));
+    } catch {}
+  }, [services]);
+
+  const value: SettingsState = { lang, setLang, region, setRegion, services, setServices };
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 

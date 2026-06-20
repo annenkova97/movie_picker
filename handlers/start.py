@@ -23,6 +23,15 @@ _ONBOARDING_FINAL = "Готова? Форвардни любой фильм 👇
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Onboarding в голосе бренда — 4 короткие реплики + финальный prompt."""
+    # app_open из бота: резолвим юзера (как и при добавлении) для retention.
+    try:
+        from handlers.analytics import track_bot
+        from handlers.callbacks import _get_or_create_user
+        user_row = await _get_or_create_user(update.effective_user)
+        await track_bot("app_open", user_row["id"], {"via": "start"})
+    except Exception:
+        pass
+
     for bubble in _ONBOARDING_BUBBLES:
         await update.message.reply_text(bubble)
         # Tiny pause so the bubbles arrive one-by-one, не сваливаются стопкой.

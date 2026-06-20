@@ -3,7 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './auth';
 import { useSettings } from './settings';
 import { useLibrary } from './hooks/useLibrary';
-import { recommend, listAwards } from './api';
+import { recommend, listAwards, type WatchAvailability } from './api';
+import { track } from './analytics';
+import { streamingLabel } from './components/ProviderBadges';
 import { T, type Lang } from './i18n';
 import { useBooks } from './hooks/useBooks';
 import { MovieDetail } from './components/MovieDetail';
@@ -57,7 +59,7 @@ interface Props {
 
 export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
   const auth = useAuth();
-  const { lang } = useSettings();
+  const { lang, region, services } = useSettings();
   const lib = useLibrary();
   const books = useBooks();
   const bookCount = (books.list.data ?? []).length;
@@ -106,19 +108,35 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
 
   const handleMoodSubmit = async (payload: {
     text: string; genre: string | null; duration: string | null; era: string | null;
+    onlyAvailable: boolean;
   }) => {
     setPicking(true);
     setPickError(null);
+    track('recommendation_requested', {
+      onlyAvailable: payload.onlyAvailable,
+      region,
+      hasServices: services.length > 0,
+    });
     try {
       const query = buildMoodQuery(payload);
       const inlineLibrary = lib.isGuest ? (moviesQuery.data ?? []) : undefined;
-      const res = await recommend(query, false, inlineLibrary);
-      const films = res.movies.slice(0, 3).map((m) => apiMovieToTonightFilm(m, lang));
+      const res = await recommend(query, false, inlineLibrary, {
+        region,
+        services,
+        onlyAvailable: payload.onlyAvailable,
+      });
+      const films = res.movies.slice(0, 3).map((m) =>
+        apiMovieToTonightFilm(m, lang, res.availability?.[String(m.id)]),
+      );
       setView({
         name: 'tonight-results',
         films,
         mood: payload.text || labelForFilters(payload),
         duration: payload.duration,
+      });
+      track('tonight_pick_viewed', {
+        count: films.length,
+        onlyAvailable: payload.onlyAvailable,
       });
     } catch (e) {
       setPickError(e instanceof Error ? e.message : String(e));
@@ -136,6 +154,7 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
         <TonightMoodFilters
           open
           loading={picking}
+          hasServices={services.length > 0}
           onClose={closeTonight}
           onSubmit={handleMoodSubmit}
         />
@@ -158,9 +177,9 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
         onClose={closeTonight}
         onRefine={() => setView({ name: 'tonight-pick' })}
         onLaunch={(film) => {
-          // Surface the launch intent — for now just log; will wire to
-          // detail view / playback handoff later.
-          console.log('[tonight:launch]', film.title);
+          // The strongest proxy for "went to actually watch it" — the core
+          // signal for the availability experiment.
+          track('launch_clicked', { title: film.title, id: film.id });
         }}
       />
     );
@@ -177,13 +196,16 @@ export function LentochkaApp({ onOpenAuth, onOpenShare }: Props) {
   const detailModal = (
     <MovieDetail
       lang={lang}
+      region={region}
       movie={selected}
       saving={detailSaving}
       onClose={() => setSelected(null)}
       onSaveToWatch={(m) => saveAwardFromDetail(m, false)}
       onSaveAsWatched={(m) => saveAwardFromDetail(m, true)}
-      onToggleWatched={(m) =>
-        lib.patch.mutateAsync({ id: m.id, fields: { is_watched: !m.watched } }).finally(() => setSelected(null))}
+      onToggleWatched={(m) => {
+        if (!m.watched) track('marked_watched', { id: m.id });
+        lib.patch.mutateAsync({ id: m.id, fields: { is_watched: !m.watched } }).finally(() => setSelected(null));
+      }}
       onRemove={(m) => lib.remove.mutateAsync(m.id).finally(() => setSelected(null))}
       onSaveDiary={(m, diary) =>
         lib.patch.mutateAsync({
@@ -389,7 +411,11 @@ function apiMovieToRecFilm(api: ApiMovie): RecFilm {
   };
 }
 
-function apiMovieToTonightFilm(api: ApiMovie, lang: Lang): TonightFilm {
+function apiMovieToTonightFilm(
+  api: ApiMovie,
+  lang: Lang,
+  availability?: WatchAvailability,
+): TonightFilm {
   const ui = toUiMovie(api);
   return {
     id: String(ui.id),
@@ -402,7 +428,7 @@ function apiMovieToTonightFilm(api: ApiMovie, lang: Lang): TonightFilm {
     rationale: ui.why ?? ui.recNote ?? '',
     source: sourceCaption(ui.recSource, lang),
     sourceUrl: ui.sourceUrl,
-    streaming: undefined,
+    streaming: streamingLabel(availability),
     poster: ui.posterUrl
       ? { background: `center / cover no-repeat url("${ui.posterUrl}") , ${gradientForHue(ui.hue)}`, overlay: '' }
       : { background: gradientForHue(ui.hue), overlay: overlayForTitle(ui.title) },

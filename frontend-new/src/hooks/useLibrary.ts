@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../auth';
 import { getLibrary } from '../library';
+import { track } from '../analytics';
 import type { ApiMovie } from '../types';
 import type { MoviePatch } from '../api';
 
@@ -30,22 +31,28 @@ export function useLibrary() {
   });
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['library'] });
+  // Track an add, then refresh the library. Used by every "movie enters the
+  // library" path so the kill-metric's save-rate signal is complete.
+  const onAdded = (source: string) => () => {
+    track('movie_added', { source });
+    invalidate();
+  };
 
   const save = useMutation({
     mutationFn: ({ imdbId, watched }: { imdbId: string; watched: boolean }) =>
       lib.saveByImdbId(imdbId, watched),
-    onSuccess: invalidate,
+    onSuccess: onAdded('save'),
   });
 
   const saveAward = useMutation({
     mutationFn: ({ movie, watched }: { movie: ApiMovie; watched: boolean }) =>
       lib.saveAward(movie, watched),
-    onSuccess: invalidate,
+    onSuccess: onAdded('award'),
   });
 
   const addByQuery = useMutation({
     mutationFn: (query: string) => lib.addByQuery(query),
-    onSuccess: invalidate,
+    onSuccess: onAdded('query'),
   });
 
   const patch = useMutation({
@@ -61,12 +68,12 @@ export function useLibrary() {
 
   const importInstagram = useMutation({
     mutationFn: (url: string) => lib.importFromInstagram(url),
-    onSuccess: invalidate,
+    onSuccess: onAdded('instagram'),
   });
 
   const importTelegram = useMutation({
     mutationFn: (url: string) => lib.importFromTelegram(url),
-    onSuccess: invalidate,
+    onSuccess: onAdded('telegram'),
   });
 
   const absorbShared = useMutation({

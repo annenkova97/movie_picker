@@ -12,6 +12,7 @@ from backend.config import MINI_APP_URL
 from backend.services import book_search
 from backend.services.title_search import get_movie_by_key, search_title
 from backend.services.llm import llm_service
+from handlers.analytics import track_bot
 from handlers.formatting import imdb_suffix
 from handlers.source_context import get_source, remember_source
 
@@ -170,6 +171,7 @@ async def _handle_add(query, imdb_id: str, *, user_id: int, context):
         rec_source=src.rec_source if src else None,
         source_url=src.source_url if src else None,
     )
+    await track_bot("movie_added", user_id, {"via": "button", "rec_source": src.rec_source if src else None})
 
     # Для карточек из ссылок даём откат («Не тот» / «Не добавлять»); после
     # явного выбора из поиска эти кнопки только путали бы.
@@ -222,6 +224,7 @@ async def auto_add_movie(
         rec_source=rec_source,
         source_url=source_url,
     )
+    await track_bot("movie_added", user_id, {"via": "auto", "rec_source": rec_source})
 
     if movie_base.plot:
         context.application.create_task(

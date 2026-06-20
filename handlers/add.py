@@ -5,6 +5,7 @@ from backend import database as db
 from backend.services.llm import llm_service
 from backend.services.title_search import find_movie_by_query
 from handlers.callbacks import _get_or_create_user
+from handlers.analytics import track_bot
 from handlers.formatting import imdb_suffix
 
 
@@ -57,6 +58,7 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Сохраняем. Название набрано руками — источника рекомендации нет,
     # поэтому rec_source не пишем (в приложении источник не показывается).
     movie = await db.add_movie(movie_base, user_id=user_id, source="personal")
+    await track_bot("movie_added", user_id, {"via": "add_command"})
 
     rating = imdb_suffix(movie.imdb_rating, "  ★ ")
     year = f" ({movie.year})" if movie.year else ""
