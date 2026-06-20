@@ -99,7 +99,7 @@ async def test_handle_add_uses_registered_link_source():
     reel = "https://instagram.com/reel/abc/"
     remember_source(201, "tt_src1", "instagram", reel)
 
-    with patch("handlers.callbacks.omdb_service.get_movie_by_id",
+    with patch("handlers.callbacks.get_movie_by_key",
                new=AsyncMock(return_value=_movie("tt_src1"))):
         await callbacks._handle_add(query, "tt_src1", user_id=user["id"], context=ctx)
 
@@ -117,7 +117,7 @@ async def test_handle_add_without_link_source_keeps_personal():
     query = _FakeQuery(chat_id=202)  # ничего не регистрировали для этого чата
     ctx = _FakeContext()
 
-    with patch("handlers.callbacks.omdb_service.get_movie_by_id",
+    with patch("handlers.callbacks.get_movie_by_key",
                new=AsyncMock(return_value=_movie("tt_src2"))), \
          patch("handlers.callbacks.MINI_APP_URL", "https://app.example"):
         await callbacks._handle_add(query, "tt_src2", user_id=user["id"], context=ctx)

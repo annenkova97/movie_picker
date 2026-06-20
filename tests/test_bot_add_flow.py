@@ -75,7 +75,7 @@ async def test_handle_add_saves_fast_then_enriches():
     query = _FakeQuery()
     ctx = _FakeContext()
 
-    with patch("handlers.callbacks.omdb_service.get_movie_by_id",
+    with patch("handlers.callbacks.get_movie_by_key",
                new=AsyncMock(return_value=_movie("tt_addflow1"))), \
          patch("handlers.callbacks.llm_service.describe_and_tease",
                new=AsyncMock(return_value=("Атмосферное кино.", "А что если всё не так?"))):
@@ -112,12 +112,12 @@ async def test_handle_add_existing_is_instant_and_skips_omdb():
 
     query = _FakeQuery()
     ctx = _FakeContext()
-    omdb = AsyncMock()
-    with patch("handlers.callbacks.omdb_service.get_movie_by_id", new=omdb):
+    lookup = AsyncMock()
+    with patch("handlers.callbacks.get_movie_by_key", new=lookup):
         await callbacks._handle_add(query, "tt_addflow2", user_id=user["id"], context=ctx)
 
     assert any("уже в тво" in r for r in query.message.replies)
-    omdb.assert_not_awaited()              # no network for a known movie
+    lookup.assert_not_awaited()            # no network for a known movie
     assert ctx.application.tasks == []     # nothing to enrich
 
 
@@ -127,7 +127,7 @@ async def test_handle_add_omdb_failure_restores_save_button():
     query = _FakeQuery()
     ctx = _FakeContext()
 
-    with patch("handlers.callbacks.omdb_service.get_movie_by_id",
+    with patch("handlers.callbacks.get_movie_by_key",
                new=AsyncMock(return_value=None)):
         await callbacks._handle_add(query, "tt_addflow3", user_id=user["id"], context=ctx)
 

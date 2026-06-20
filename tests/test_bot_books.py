@@ -118,8 +118,11 @@ async def test_resolve_books_uses_author_query_and_resolves():
 
     assert [b.work_key for b in resolved] == ["gb:abc"]
     assert unmatched == []
-    # author folded into the query — that's what makes Brodsky resolve.
-    search.assert_awaited_once_with("Часть речи Иосиф Бродский")
+    # Автор уходит в структурированный запрос intitle:/inauthor: (это и «спасает»
+    # Бродского), а ранжируем по чистому названию через rank_query.
+    search.assert_awaited_once_with(
+        'intitle:"Часть речи" inauthor:"Иосиф Бродский"', rank_query="Часть речи",
+    )
 
 
 @pytest.mark.asyncio

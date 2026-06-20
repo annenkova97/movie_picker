@@ -12,6 +12,7 @@ from backend.models.movie import MovieBase, OMDBSearchResult
 from backend.services.instagram_reader import MovieInfo
 from backend.services.llm import llm_service
 from backend.services.omdb import omdb_service
+from backend.services.title_search import get_movie_by_key
 from backend.services.tmdb import tmdb_service
 
 
@@ -127,8 +128,9 @@ async def resolve_movies(
             unmatched.append(display_title)
             continue
 
-        imdb_id = candidates[0].imdb_id
-        movie_base = await omdb_service.get_movie_by_id(imdb_id)
+        # Кандидат может быть TMDb-only (ключ ``tmdb:…``) — диспетчеризуем
+        # вместо прямого OMDB, иначе старый/русский фильм без IMDb id потеряем.
+        movie_base = await get_movie_by_key(candidates[0].imdb_id)
         if not movie_base:
             unmatched.append(display_title)
             continue

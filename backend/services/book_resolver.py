@@ -8,14 +8,40 @@ author is known (that's what makes «Бродский» resolve).
 
 from __future__ import annotations
 
-from backend.models.book import BookBase
+from typing import Optional
+
+from backend.models.book import BookBase, BookSearchResult
 from backend.services import book_search
 from backend.services.media_extractor import BookInfo
+from backend.services.text_match import normalize_title, title_score
 
 
-def _query_for(item: BookInfo) -> str:
-    title = item.title_ru or item.title_en
-    return f"{title} {item.author}".strip() if item.author else title
+def _query_for(item: BookInfo) -> tuple[str, str]:
+    """Вернуть ``(search_query, clean_title)``.
+
+    При известном авторе строим структурированный запрос
+    ``intitle:"…" inauthor:"…"`` — Google Books так точнее находит конкретное
+    произведение (именно это «спасает» Бродского), а ранжируем потом по чистому
+    названию.
+    """
+    title = (item.title_ru or item.title_en or "").strip()
+    author = (item.author or "").strip()
+    if author:
+        return f'intitle:"{title}" inauthor:"{author}"', title
+    return title, title
+
+
+def _author_overlap(a: str, b: Optional[str]) -> bool:
+    if not a or not b:
+        return False
+    return bool(set(normalize_title(a).split()) & set(normalize_title(b).split()))
+
+
+def _candidate_score(r: BookSearchResult, title: str, author: str) -> float:
+    score = title_score(title, r.title)
+    if _author_overlap(author, r.author):
+        score += 0.3
+    return score
 
 
 async def resolve_books(
@@ -30,21 +56,24 @@ async def resolve_books(
 
     for item in books_info:
         display = item.title_ru or item.title_en or "?"
-        query = _query_for(item)
+        query, clean_title = _query_for(item)
         if not query:
             continue
 
-        results = await book_search.search_books(query)
+        results = await book_search.search_books(query, rank_query=clean_title)
         if not results:
             unmatched.append(display)
             continue
 
-        work_key = results[0].work_key
-        if work_key in seen:
+        # Выбираем лучшее совпадение, а не «первый результат»: для старых книг
+        # Google нередко ставит учебник/чужое издание выше нужного.
+        author = (item.author or "").strip()
+        best = max(results, key=lambda r: _candidate_score(r, clean_title, author))
+        if best.work_key in seen:
             continue
-        seen.add(work_key)
+        seen.add(best.work_key)
 
-        base = await book_search.get_book_by_key(work_key)
+        base = await book_search.get_book_by_key(best.work_key)
         if base:
             resolved.append(base)
         else:

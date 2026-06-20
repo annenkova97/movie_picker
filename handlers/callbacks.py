@@ -10,9 +10,8 @@ from telegram.ext import ApplicationHandlerStop, ContextTypes
 from backend import database as db
 from backend.config import MINI_APP_URL
 from backend.services import book_search
-from backend.services.omdb import omdb_service
+from backend.services.title_search import get_movie_by_key, search_title
 from backend.services.llm import llm_service
-from backend.services.title_search import search_title
 from handlers.formatting import imdb_suffix
 from handlers.source_context import get_source, remember_source
 
@@ -146,7 +145,7 @@ async def _handle_add(query, imdb_id: str, *, user_id: int, context):
     # Мгновенная реакция на тап — лоадер вместо «застывшей» кнопки.
     await query.edit_message_reply_markup(reply_markup=_loading_keyboard())
 
-    movie_base = await omdb_service.get_movie_by_id(imdb_id)
+    movie_base = await get_movie_by_key(imdb_id)
     if not movie_base:
         # Возвращаем кнопку, чтобы можно было повторить.
         await query.edit_message_reply_markup(

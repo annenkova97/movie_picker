@@ -19,7 +19,7 @@ from typing import Optional
 from backend.models.movie import MovieBase, OMDBSearchResult
 from backend.services.llm import llm_service
 from backend.services.omdb import omdb_service
-from backend.services.tmdb import tmdb_service
+from backend.services.tmdb import is_tmdb_key, tmdb_service
 
 
 CYRILLIC_RE = re.compile(r"[а-яёА-ЯЁ]")
@@ -27,6 +27,17 @@ CYRILLIC_RE = re.compile(r"[а-яёА-ЯЁ]")
 
 def has_cyrillic(text: str) -> bool:
     return bool(CYRILLIC_RE.search(text))
+
+
+async def get_movie_by_key(key: str) -> Optional[MovieBase]:
+    """Полная ``MovieBase`` по внешнему ключу — диспетчер по провайдеру.
+
+    Зеркало ``book_search.get_book_by_key``: ``tmdb:…`` → метадата из TMDb (для
+    фильмов без IMDb id), всё остальное (``tt…``) → OMDB по IMDb id.
+    """
+    if is_tmdb_key(key):
+        return await tmdb_service.get_by_key(key)
+    return await omdb_service.get_movie_by_id(key)
 
 
 async def search_title(query: str) -> list[OMDBSearchResult]:
@@ -79,7 +90,7 @@ async def find_movie_by_query(query: str) -> Optional[MovieBase]:
         return None
 
     if query.startswith("tt") and query[2:].isdigit():
-        return await omdb_service.get_movie_by_id(query)
+        return await get_movie_by_key(query)
 
     movie = await omdb_service.get_movie_by_title(query)
     if movie:
@@ -89,7 +100,8 @@ async def find_movie_by_query(query: str) -> Optional[MovieBase]:
     if not candidates:
         return None
 
-    return await omdb_service.get_movie_by_id(candidates[0].imdb_id)
+    # Кандидат может быть TMDb-only (ключ ``tmdb:…``) — диспетчеризуем.
+    return await get_movie_by_key(candidates[0].imdb_id)
 
 
 async def _translate_safe(query: str) -> str:

@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.models.movie import OMDBSearchResult
-from backend.services.title_search import find_movie_by_query, search_title
+from backend.services.title_search import (
+    find_movie_by_query,
+    get_movie_by_key,
+    search_title,
+)
 
 
 def _result(title: str, imdb_id: str = "tt0000001") -> OMDBSearchResult:
@@ -166,3 +170,38 @@ async def test_find_by_query_falls_through_to_search_for_cyrillic():
 
     assert result == "FULL_OMDB"
     get_by_id.assert_awaited_once_with("tt0137523")
+
+
+# ── get_movie_by_key (диспетчер источника метадаты) ─────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_get_movie_by_key_dispatches_by_prefix():
+    """tt… → OMDB по imdb_id; tmdb:… → TMDb get_by_key."""
+    omdb_by_id = AsyncMock(return_value="OMDB_MOVIE")
+    tmdb_by_key = AsyncMock(return_value="TMDB_MOVIE")
+
+    with patch("backend.services.title_search.omdb_service.get_movie_by_id", new=omdb_by_id), \
+         patch("backend.services.title_search.tmdb_service.get_by_key", new=tmdb_by_key):
+        assert await get_movie_by_key("tt0137523") == "OMDB_MOVIE"
+        assert await get_movie_by_key("tmdb:movie:42") == "TMDB_MOVIE"
+
+    omdb_by_id.assert_awaited_once_with("tt0137523")
+    tmdb_by_key.assert_awaited_once_with("tmdb:movie:42")
+
+
+@pytest.mark.asyncio
+async def test_find_by_query_resolves_tmdb_only_candidate():
+    """Кандидат без IMDb id (ключ tmdb:…) резолвится через TMDb, не через OMDB."""
+    by_title = AsyncMock(return_value=None)
+    tmdb_search = AsyncMock(return_value=[_result("Старый фильм", "tmdb:movie:42")])
+    tmdb_by_key = AsyncMock(return_value="FROM_TMDB")
+
+    with patch("backend.services.title_search.omdb_service.get_movie_by_title", new=by_title), \
+         patch("backend.services.title_search.tmdb_service.api_key", new="dummy"), \
+         patch("backend.services.title_search.tmdb_service.search_any", new=tmdb_search), \
+         patch("backend.services.title_search.tmdb_service.get_by_key", new=tmdb_by_key):
+        result = await find_movie_by_query("Старый фильм")
+
+    assert result == "FROM_TMDB"
+    tmdb_by_key.assert_awaited_once_with("tmdb:movie:42")
