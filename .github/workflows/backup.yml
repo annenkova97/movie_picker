@@ -34,7 +34,7 @@ jobs:
             echo "::error::DATABASE_PUBLIC_URL secret is not set"; exit 1
           fi
           STAMP=$(date -u +%Y-%m-%d_%H%M)
-          docker run --rm -e PGURL="$DATABASE_PUBLIC_URL" postgres:17 \
+          docker run --rm -e PGURL="$DATABASE_PUBLIC_URL" postgres:18 \
             sh -c 'pg_dump --no-owner --no-privileges --format=custom "$PGURL"' \
             > "lentochka_${STAMP}.dump"
           test -s "lentochka_${STAMP}.dump" || { echo "::error::dump is empty"; exit 1; }
