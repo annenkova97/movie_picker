@@ -69,7 +69,7 @@ function TypoFallback({ movie, lang, w, h }: Required<Pick<Props, 'movie' | 'lan
     flexShrink: 0,
   };
 
-  const fontStack = `'Fraunces', 'Playfair Display', Georgia, serif`;
+  const fontStack = `'Playfair Display', Georgia, serif`;
   const monoStack = `'JetBrains Mono', ui-monospace, Menlo, monospace`;
   const rating = movie.publicRating > 0 ? movie.publicRating.toFixed(1) : '—';
   const runtimeLabel = `${movie.runtime} ${T.min[lang]}`;
