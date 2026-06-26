@@ -270,6 +270,58 @@ async def test_search_books_intitle_fallback_when_plain_empty():
 
 
 @pytest.mark.asyncio
+async def test_search_books_retries_without_langrestrict_for_cyrillic():
+    """Кириллица: пустой ответ под langRestrict=ru → повтор без фильтра языка.
+
+    Google не всем русским томам проставляет язык; под langRestrict=ru автор
+    вроде «Бродский» может вернуть пусто, а тот же запрос без ограничения —
+    найтись. Без этого повтора поиск ушёл бы на бесполезный по-русски OL."""
+    from backend.services import book_search
+
+    calls: list[tuple[str, object]] = []
+
+    async def _gb(q, prefer_lang=None):
+        calls.append((q, prefer_lang))
+        if prefer_lang == "ru":
+            return []  # под языковым фильтром — пусто
+        return [BookSearchResult(work_key="gb:brodsky", title="Часть речи",
+                                 author="Иосиф Бродский", year="1977", cover_url=None)]
+
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books", new=_gb,
+    ), patch(
+        "backend.services.book_search.openlibrary_service.search_books",
+        new=AsyncMock(return_value=[]),
+    ) as ol:
+        results = await book_search.search_books("Бродский")
+
+    assert [r.work_key for r in results] == ["gb:brodsky"]
+    # Сначала с ru, затем тот же запрос без него; до Open Library не дошло.
+    assert ("Бродский", "ru") in calls
+    assert ("Бродский", None) in calls
+    ol.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_openlibrary_search_survives_network_error():
+    """Open Library (последний фолбэк) упал → [] вместо 500 на весь /search."""
+    import httpx
+
+    from backend.services.openlibrary import openlibrary_service
+
+    class _BoomClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def get(self, *a, **k): raise httpx.ConnectError("boom")
+
+    with patch("backend.services.openlibrary.httpx.AsyncClient", _BoomClient):
+        results = await openlibrary_service.search_books("Бродский")
+
+    assert results == []
+
+
+@pytest.mark.asyncio
 async def test_book_recommend_uses_library(client):
     token = await _register(client, "books_rec@example.com")
     headers = _auth(token)

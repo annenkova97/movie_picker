@@ -10,12 +10,15 @@ how movies use the bare IMDb id.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional
 
 import httpx
 
 from backend.models.book import BookBase, BookSearchResult
+
+log = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://openlibrary.org/search.json"
 _WORKS_URL = "https://openlibrary.org/works/{key}.json"
@@ -56,9 +59,18 @@ class OpenLibraryService:
             "limit": "12",
             "fields": "key,title,author_name,first_publish_year,cover_i",
         }
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(_SEARCH_URL, params=params)
-            data = resp.json()
+        # Open Library — это последний фолбэк под Google Books; если он лёг или
+        # ответил не-200, гасим в пустой список, а не роняем весь /search в 500.
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                resp = await client.get(_SEARCH_URL, params=params)
+                if resp.status_code != 200:
+                    log.info("Open Library %s for q=%r", resp.status_code, query)
+                    return []
+                data = resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            log.warning("Open Library request failed for q=%r: %s", query, exc)
+            return []
 
         results: list[BookSearchResult] = []
         for doc in data.get("docs", []):

@@ -26,6 +26,20 @@ def _has_operators(query: str) -> bool:
     return "intitle:" in query or "inauthor:" in query
 
 
+async def _google(query: str, prefer_lang: Optional[str]) -> list[BookSearchResult]:
+    """Google Books с подстраховкой по языку.
+
+    ``langRestrict=ru`` поднимает русские издания над переводами, но Google
+    далеко не всем русским томам проставляет язык — под фильтром они выпадают,
+    и автор вроде «Бродский» может вернуть пусто. Поэтому при пустом ответе
+    повторяем тот же запрос без ограничения языка, прежде чем сдаваться.
+    """
+    results = await googlebooks_service.search_books(query, prefer_lang=prefer_lang)
+    if not results and prefer_lang:
+        results = await googlebooks_service.search_books(query)
+    return results
+
+
 def _rerank(results: list[BookSearchResult], key: str) -> list[BookSearchResult]:
     """Стабильно отсортировать по близости названия к ``key`` (лучшее — выше)."""
     return [
@@ -51,14 +65,12 @@ async def search_books(
 
     rank_by = rank_query or query
     prefer_lang = "ru" if has_cyrillic(query) else None
-    results = await googlebooks_service.search_books(query, prefer_lang=prefer_lang)
+    results = await _google(query, prefer_lang)
 
     # Старые/редкие книги: если обычный запрос пуст — пробуем строгий intitle
     # перед откатом на Open Library (он по-русски почти бесполезен).
     if not results and not _has_operators(query):
-        results = await googlebooks_service.search_books(
-            f"intitle:{query}", prefer_lang=prefer_lang,
-        )
+        results = await _google(f"intitle:{query}", prefer_lang)
 
     if not results:
         results = await openlibrary_service.search_books(query)
