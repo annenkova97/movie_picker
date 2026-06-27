@@ -1,14 +1,17 @@
-"""Единая точка поиска книг: Google Books → Open Library (фолбэк).
+"""Единая точка поиска книг: Google Books → Wikidata → Open Library.
 
 Зеркало ``services/title_search.py`` для фильмов. Google Books идёт первым —
 он сильно лучше находит русскоязычные книги (для кириллицы добавляем
-``langRestrict=ru``). Если Google ничего не вернул или упал по квоте —
-откатываемся на Open Library.
+``langRestrict=ru``, а если он перефильтровал в пустоту — повторяем без него).
+
+Если Google молчит (исчерпана анонимная квота → 429, или просто ничего нет),
+откатываемся на источники, независимые от его квоты: сначала Wikidata (сильна
+по-русски, без ключа и дневного лимита), затем Open Library.
 
 Выдачу локально ре-ранжируем по близости названия (``text_match``): Google
 часто ставит учебники/дубли-издания/переводы выше нужной классики, особенно для
 старых русских книг. Детали тянем по префиксу ключа: ``gb:…`` → Google Books,
-``OL…W`` → Open Library.
+``wd:…`` → Wikidata, ``OL…W`` → Open Library.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from backend.services.googlebooks import googlebooks_service, is_google_key
 from backend.services.openlibrary import openlibrary_service
 from backend.services.text_match import title_score
 from backend.services.title_search import has_cyrillic
+from backend.services.wikidata import is_wikidata_key, wikidata_service
 
 
 def _has_operators(query: str) -> bool:
@@ -68,18 +72,26 @@ async def search_books(
     results = await _google(query, prefer_lang)
 
     # Старые/редкие книги: если обычный запрос пуст — пробуем строгий intitle
-    # перед откатом на Open Library (он по-русски почти бесполезен).
+    # перед откатом на бесключевые источники.
     if not results and not _has_operators(query):
         results = await _google(f"intitle:{query}", prefer_lang)
 
+    # Google молчит (квота/429 или ничего не нашёл) → независимые от него
+    # источники. Wikidata сильнее по-русски, поэтому идёт перед Open Library.
+    # Им отдаём человекочитаемую строку (rank_by), а не Google-операторы из query.
     if not results:
-        results = await openlibrary_service.search_books(query)
+        results = await wikidata_service.search_books(rank_by)
+
+    if not results:
+        results = await openlibrary_service.search_books(rank_by)
 
     return _rerank(results, rank_by)
 
 
 async def get_book_by_key(work_key: str) -> Optional[BookBase]:
-    """Полные метаданные книги по ключу. Диспатч по провайдеру."""
+    """Полные метаданные книги по ключу. Диспатч по префиксу провайдера."""
     if is_google_key(work_key):
         return await googlebooks_service.get_book_by_key(work_key)
+    if is_wikidata_key(work_key):
+        return await wikidata_service.get_book_by_key(work_key)
     return await openlibrary_service.get_book_by_key(work_key)
