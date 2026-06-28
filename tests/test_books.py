@@ -272,6 +272,67 @@ async def test_search_books_reranks_best_title_on_top():
 
 
 @pytest.mark.asyncio
+async def test_author_query_ranks_authors_works_above_books_about_them():
+    """Запрос-автор «Бродский»: его произведения выше книг, ОЗАГЛАВЛЕННЫХ им.
+
+    Регрессия на жалобу: поиск возвращал книги *про* Бродского (в названии
+    «Бродский», автор — Штерн/Ахапкин) выше его собственных произведений."""
+    from backend.services import book_search
+
+    # Источник (Open Library) отдаёт вперемешку, его произведение — в середине.
+    hits = [
+        BookSearchResult(work_key="OL1W", title="Бродский",
+                         author="Людмила Штерн", year="2023", cover_url=None),
+        BookSearchResult(work_key="OL2W", title="Урания",
+                         author="Иосиф Бродский", year="1987", cover_url=None),
+        BookSearchResult(work_key="OL3W", title="Иосиф Бродский и Анна Ахматова",
+                         author="Денис Ахапкин", year="2021", cover_url=None),
+    ]
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "backend.services.book_search.wikidata_service.search_books",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "backend.services.book_search.openlibrary_service.search_books",
+        new=AsyncMock(return_value=hits),
+    ):
+        results = await book_search.search_books("Бродский")
+
+    keys = [r.work_key for r in results]
+    assert keys[0] == "OL2W"  # произведение Бродского — первым
+    assert keys.index("OL2W") < keys.index("OL1W")  # выше книги «Бродский» (Штерн)
+    assert keys.index("OL2W") < keys.index("OL3W")  # выше книги о нём (Ахапкин)
+
+
+@pytest.mark.asyncio
+async def test_google_inauthor_supplements_recall_for_author_query():
+    """Для запроса-автора подмешиваются книги inauthor и встают первыми.
+
+    Обычный запрос вернул лишь книгу *про* автора; inauthor достаёт его
+    собственное произведение, и оно оказывается выше."""
+    from backend.services import book_search
+
+    work = BookSearchResult(work_key="gb:work", title="Часть речи",
+                            author="Иосиф Бродский", year="1977", cover_url=None)
+    about = BookSearchResult(work_key="gb:about", title="Бродский",
+                             author="Людмила Штерн", year="2023", cover_url=None)
+
+    async def _gb(q, prefer_lang=None):
+        return [work] if q.startswith("inauthor:") else [about]
+
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books", new=_gb,
+    ):
+        results = await book_search.search_books("Бродский")
+
+    keys = [r.work_key for r in results]
+    assert keys[0] == "gb:work"     # его произведение (inauthor) — первым
+    assert "gb:about" in keys       # книга про него тоже в выдаче, но ниже
+
+
+@pytest.mark.asyncio
 async def test_search_books_intitle_fallback_when_plain_empty():
     """Пустой обычный запрос → строгий intitle до отката на Open Library."""
     from backend.services import book_search

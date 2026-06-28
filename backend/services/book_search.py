@@ -21,13 +21,33 @@ from typing import Optional
 from backend.models.book import BookBase, BookSearchResult
 from backend.services.googlebooks import googlebooks_service, is_google_key
 from backend.services.openlibrary import openlibrary_service
-from backend.services.text_match import title_score
+from backend.services.text_match import normalize_title, title_score
 from backend.services.title_search import has_cyrillic
 from backend.services.wikidata import is_wikidata_key, wikidata_service
 
 
 def _has_operators(query: str) -> bool:
     return "intitle:" in query or "inauthor:" in query
+
+
+def _significant_tokens(text: Optional[str]) -> set[str]:
+    """Слова длиной ≥3 символов. Короткие («и», «в», инициалы) отбрасываем —
+    иначе токен «и» из «Война и мир» ложно совпал бы с автором «И. Фамилия»."""
+    return {t for t in normalize_title(text).split() if len(t) >= 3}
+
+
+def _author_matches(query: str, author: Optional[str]) -> bool:
+    """Пересекается ли запрос с именем автора по значимым токенам.
+
+    Для «Бродский» это True у его книг (автор «Иосиф Бродский») и False у книг
+    *про* него (автор — кто-то другой, «Бродский» лишь в названии)."""
+    return bool(author and (_significant_tokens(query) & _significant_tokens(author)))
+
+
+def _looks_like_author(query: str) -> bool:
+    """Похоже ли на имя автора: 1–2 значимых слова (фамилия или «Имя Фамилия»).
+    Длинные строки почти всегда названия — для них inauthor бессмыслен."""
+    return 1 <= len(_significant_tokens(query)) <= 2
 
 
 async def _google(query: str, prefer_lang: Optional[str]) -> list[BookSearchResult]:
@@ -44,12 +64,28 @@ async def _google(query: str, prefer_lang: Optional[str]) -> list[BookSearchResu
     return results
 
 
+def _merge(primary: list[BookSearchResult], secondary: list[BookSearchResult]) -> list[BookSearchResult]:
+    """``primary`` впереди, затем ``secondary`` без дублей по ``work_key``."""
+    seen = {r.work_key for r in primary}
+    return list(primary) + [r for r in secondary if r.work_key not in seen]
+
+
 def _rerank(results: list[BookSearchResult], key: str) -> list[BookSearchResult]:
-    """Стабильно отсортировать по близости названия к ``key`` (лучшее — выше)."""
+    """Отсортировать по релевантности к ``key`` (лучшее — выше).
+
+    Главный критерий — совпадение по АВТОРУ: для запроса-автора («Бродский»)
+    его произведения должны стоять строго выше книг, просто ОЗАГЛАВЛЕННЫХ
+    запросом (книги про него, где автор другой). Дальше — близость названия.
+    Сорт стабилен, поэтому внутри равных сохраняется порядок источника
+    (у Google/inauthor он ≈ по популярности)."""
     return [
         r for _, r in sorted(
             enumerate(results),
-            key=lambda iv: (-title_score(key, iv[1].title), iv[0]),
+            key=lambda iv: (
+                not _author_matches(key, iv[1].author),  # author-совпадения первыми
+                -title_score(key, iv[1].title),
+                iv[0],
+            ),
         )
     ]
 
@@ -71,8 +107,18 @@ async def search_books(
     prefer_lang = "ru" if has_cyrillic(query) else None
     results = await _google(query, prefer_lang)
 
-    # Старые/редкие книги: если обычный запрос пуст — пробуем строгий intitle
-    # перед откатом на бесключевые источники.
+    # Запрос похож на автора → подмешиваем книги, где он именно АВТОР
+    # (``inauthor:``). Обычный запрос «Бродский» тонет в книгах *про* него;
+    # inauthor достаёт *написанные им* произведения (у Google — по популярности),
+    # а ре-ранжирование ниже ставит их выше. Только для «чистых» запросов:
+    # из резолвера приходит query с Google-операторами — его не трогаем.
+    if not _has_operators(query) and _looks_like_author(query):
+        by_author = await _google(f'inauthor:"{query}"', prefer_lang)
+        if by_author:
+            results = _merge(by_author, results)
+
+    # Старые/редкие книги: если до сих пор пусто — строгий intitle перед
+    # откатом на бесключевые источники.
     if not results and not _has_operators(query):
         results = await _google(f"intitle:{query}", prefer_lang)
 
