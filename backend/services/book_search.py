@@ -130,6 +130,12 @@ async def search_books(
 
     if not results:
         results = await openlibrary_service.search_books(rank_by)
+        # Запрос-имя: общий q у Open Library отдаёт книги *про* автора;
+        # отдельный запрос по полю автора достаёт *написанные им* — ставим их
+        # вперёд (ре-ранжирование закрепит), чтобы выдача была не только «о нём».
+        if _looks_like_author(rank_by):
+            by_author = await openlibrary_service.search_books(rank_by, by_author=True)
+            results = _merge(by_author, results)
 
     return _rerank(results, rank_by)
 

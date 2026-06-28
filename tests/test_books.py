@@ -182,7 +182,9 @@ async def test_dispatcher_falls_back_to_open_library(client):
         results = await book_search.search_books("hobbit")
 
     assert [r.work_key for r in results] == ["OL45804W"]
-    ol.assert_called_once()
+    # «hobbit» похоже на имя → общий запрос + запрос по автору (дубли схлопнуты).
+    ol.assert_called()
+    assert any(c.kwargs.get("by_author") for c in ol.call_args_list)
 
 
 @pytest.mark.asyncio
@@ -409,6 +411,37 @@ async def test_openlibrary_search_survives_network_error():
         results = await openlibrary_service.search_books("Бродский")
 
     assert results == []
+
+
+@pytest.mark.asyncio
+async def test_openlibrary_author_recall_surfaces_authored_works():
+    """Keyless-путь: общий q даёт книгу *про* автора, запрос по автору — его
+    книгу, и она оказывается первой. Покрывает баг, где без ключа Google
+    выдача состояла только из книг о Бродском."""
+    from backend.services import book_search
+
+    about = BookSearchResult(work_key="OLaboutW", title="Бродский",
+                             author="Людмила Штерн", year="2023", cover_url=None)
+    work = BookSearchResult(work_key="OLworkW", title="Часть речи",
+                            author="Иосиф Бродский", year="1977", cover_url=None)
+
+    async def _ol(query, by_author=False):
+        return [work] if by_author else [about]
+
+    with patch(
+        "backend.services.book_search.googlebooks_service.search_books",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "backend.services.book_search.wikidata_service.search_books",
+        new=AsyncMock(return_value=[]),
+    ), patch(
+        "backend.services.book_search.openlibrary_service.search_books", new=_ol,
+    ):
+        results = await book_search.search_books("Бродский")
+
+    keys = [r.work_key for r in results]
+    assert keys[0] == "OLworkW"   # написанная им книга — первой
+    assert "OLaboutW" in keys     # книга про него тоже есть, но ниже
 
 
 # ----- Wikidata provider (бесключевой русский фолбэк) -----

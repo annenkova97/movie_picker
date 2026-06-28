@@ -52,10 +52,16 @@ def _cover_url(cover_id) -> Optional[str]:
 class OpenLibraryService:
     """Сервис для работы с Open Library (книги)."""
 
-    async def search_books(self, query: str) -> list[BookSearchResult]:
-        """Поиск книг по названию/автору. Один запрос к search.json."""
+    async def search_books(
+        self, query: str, *, by_author: bool = False
+    ) -> list[BookSearchResult]:
+        """Поиск книг к search.json одним запросом.
+
+        ``by_author=True`` ищет строго по полю автора (``author=``) вместо
+        общего ``q=``: для запроса-имени это достаёт книги, *написанные* им, а
+        не книги, где имя просто в названии/аннотации."""
         params = {
-            "q": query,
+            "author" if by_author else "q": query,
             "limit": "12",
             "fields": "key,title,author_name,first_publish_year,cover_i",
         }
