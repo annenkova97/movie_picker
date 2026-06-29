@@ -10,12 +10,15 @@ how movies use the bare IMDb id.
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Optional
 
 import httpx
 
 from backend.models.book import BookBase, BookSearchResult
+
+log = logging.getLogger(__name__)
 
 _SEARCH_URL = "https://openlibrary.org/search.json"
 _WORKS_URL = "https://openlibrary.org/works/{key}.json"
@@ -49,16 +52,31 @@ def _cover_url(cover_id) -> Optional[str]:
 class OpenLibraryService:
     """Сервис для работы с Open Library (книги)."""
 
-    async def search_books(self, query: str) -> list[BookSearchResult]:
-        """Поиск книг по названию/автору. Один запрос к search.json."""
+    async def search_books(
+        self, query: str, *, by_author: bool = False
+    ) -> list[BookSearchResult]:
+        """Поиск книг к search.json одним запросом.
+
+        ``by_author=True`` ищет строго по полю автора (``author=``) вместо
+        общего ``q=``: для запроса-имени это достаёт книги, *написанные* им, а
+        не книги, где имя просто в названии/аннотации."""
         params = {
-            "q": query,
+            "author" if by_author else "q": query,
             "limit": "12",
             "fields": "key,title,author_name,first_publish_year,cover_i",
         }
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            resp = await client.get(_SEARCH_URL, params=params)
-            data = resp.json()
+        # Open Library — это последний фолбэк под Google Books; если он лёг или
+        # ответил не-200, гасим в пустой список, а не роняем весь /search в 500.
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                resp = await client.get(_SEARCH_URL, params=params)
+                if resp.status_code != 200:
+                    log.info("Open Library %s for q=%r", resp.status_code, query)
+                    return []
+                data = resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            log.warning("Open Library request failed for q=%r: %s", query, exc)
+            return []
 
         results: list[BookSearchResult] = []
         for doc in data.get("docs", []):

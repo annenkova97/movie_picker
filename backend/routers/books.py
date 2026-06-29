@@ -20,12 +20,17 @@ from backend.services import book_search, llm_service
 
 router = APIRouter(prefix="/api/books", tags=["books"])
 
-# Распознаём явный ключ книги: Open Library (OL…W) или Google Books (gb:<id>).
+# Распознаём явный ключ книги: Open Library (OL…W), Google Books (gb:<id>)
+# или Wikidata (wd:Q<id>).
 _OL_KEY_RE = re.compile(r"^OL\d+W$", re.IGNORECASE)
 
 
 def _is_work_key(query: str) -> bool:
-    return query.startswith("gb:") or bool(_OL_KEY_RE.match(query))
+    return (
+        query.startswith("gb:")
+        or query.startswith("wd:")
+        or bool(_OL_KEY_RE.match(query))
+    )
 
 
 # ----- static sub-paths (declared before /{book_id} so они не перехватываются) -----
