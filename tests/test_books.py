@@ -413,6 +413,14 @@ async def test_openlibrary_search_survives_network_error():
     assert results == []
 
 
+def test_googlebooks_params_always_include_country():
+    """С API-ключом Google Books требует country — без него поиск даёт 403
+    "Cannot determine user location". Параметр должен добавляться всегда."""
+    from backend.services.googlebooks import _params
+
+    assert _params({"q": "x"}).get("country")
+
+
 @pytest.mark.asyncio
 async def test_openlibrary_author_recall_surfaces_authored_works():
     """Keyless-путь: общий q даёт книгу *про* автора, запрос по автору — его

@@ -21,7 +21,11 @@ from typing import Optional
 
 import httpx
 
-from backend.config import GOOGLE_BOOKS_API_KEY, GOOGLE_BOOKS_BASE_URL
+from backend.config import (
+    GOOGLE_BOOKS_API_KEY,
+    GOOGLE_BOOKS_BASE_URL,
+    GOOGLE_BOOKS_COUNTRY,
+)
 from backend.models.book import BookBase, BookSearchResult
 
 log = logging.getLogger(__name__)
@@ -56,6 +60,9 @@ def _cover(image_links: Optional[dict]) -> Optional[str]:
 
 def _params(extra: dict) -> dict:
     params = dict(extra)
+    # country обязателен при запросе с ключом — иначе 403 "Cannot determine user
+    # location". Для анонимной квоты безвреден (страна и так берётся по IP).
+    params["country"] = GOOGLE_BOOKS_COUNTRY
     if GOOGLE_BOOKS_API_KEY:
         params["key"] = GOOGLE_BOOKS_API_KEY
     return params

@@ -60,6 +60,10 @@ TMDB_BASE_URL = "https://api.themoviedb.org/3"
 # Console → APIs & Services → Credentials.
 GOOGLE_BOOKS_API_KEY = os.getenv("GOOGLE_BOOKS_API_KEY", "")
 GOOGLE_BOOKS_BASE_URL = "https://www.googleapis.com/books/v1/volumes"
+# С API-ключом Google Books ТРЕБУЕТ страну (ISO 3166-1 alpha-2): без неё поиск
+# отдаёт 403 "Cannot determine user location". Анонимная квота берёт её по IP,
+# с ключом — нет. Для русскоязычной аудитории дефолт — RU.
+GOOGLE_BOOKS_COUNTRY = os.getenv("GOOGLE_BOOKS_COUNTRY", "RU")
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 INSTAGRAM_VIDEO_DIR = os.getenv(
